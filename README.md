@@ -12,9 +12,10 @@ Per the tree's sharing discipline, corpora-builder does **not** become a shared 
 
 ## Status
 
-Early. The design conversation lives in
-[`context-v/explorations/Corpora-Builder-System-Design.md`](context-v/explorations/Corpora-Builder-System-Design.md),
-which surveys the prior art (augment-it corpus flows, source-curation gate, context-vigilance/Chroma ingest) and sketches the system.
+Early. The design conversation lives in two explorations:
+
+- [`context-v/explorations/Corpora-Builder-System-Design.md`](context-v/explorations/Corpora-Builder-System-Design.md) — prior art survey, settled constraints, open tensions, and the operator wishlist (remote-first corpora, Tauri + web surfaces, didi.sh workspaces, citation-grade indexing).
+- [`context-v/explorations/Design-Front-Loading-and-the-Fable-Build-Loop.md`](context-v/explorations/Design-Front-Loading-and-the-Fable-Build-Loop.md) — the build method: front-loaded specs, a spec-driven TDD loop (Spec Kit / OpenSpec / context-v hybrid), and strict design-system discipline from day one.
 
 ## Layout
 

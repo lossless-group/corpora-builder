@@ -7,7 +7,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Fable 5
-semantic_version: 0.0.0.1
+semantic_version: 0.0.1.0
 tags:
   - Exploration
   - Corpus-Building
@@ -71,15 +71,65 @@ Local filesystem + per-client git worked for two clients; it does not survive cl
 
 Corpus building **is** context-vigilance applied to client source material: same frontmatter-as-truth, same wikilinks, same Chroma read-side. The context-vigilance-kit ingest scripts and the client-corpus ingest are near-twins. Should corpora-builder subsume the ingest side of the kit, or stay a sibling that shares conventions? Leaning: share conventions and the collection-naming scheme; do not merge repos — the kit serves the Lossless tree, corpora-builder serves client corpora, and the privacy boundaries differ.
 
+## Operator wishlist (2026-07-20) — requirements from the field
+
+Direct input from the operator (Michael), captured before any spec hardens. These are *forces*, not yet decisions — but several of them re-weight the tensions above, so they belong in this doc rather than a side note.
+
+### W1 — Remote corpora are the source of truth; local feels like Dropbox
+
+In multi-user workspaces, the **remote** copy of a corpus is authoritative. Version control underneath is git or [Jujutsu](https://github.com/jj-vcs/jj) — but the command layer is hidden. The people who need corpora as RAG inputs to their own work are mostly **non-technical and terminal-avoidant**: they will not install git, and they will not open a shell. So:
+
+- The local install is **one artifact** — a containerized/VM setup that brings every tool with it. No "first install git, then…" onboarding.
+- In-app local additions and edits get **automated sync** (Dropbox/Karakeep-style continuous) *plus* explicit **version-control-save moments** ("checkpoint this") that map to commits underneath without ever saying the word "commit".
+- The command layer is reachable two ways for those who want it: a simple UI, and **agent chat** (didi issuing `source.*`-style verbs).
+
+This *flips the polarity of Tension 3*: the earlier lean treated local files as primary and warned against the object store becoming primary. The reconciliation: **files-as-truth survives, but the truth lives in the remote**; every local workspace is a syncing, versioned replica. Constraint 1 (hand-recoverable markdown + frontmatter) still holds — it just holds *on the server too*.
+
+### W2 — Storage substrate: blob is normal, fancy filesystems are on the table
+
+Plain blob storage (R2/S3) is the default assumption, but there may be reasons to run a real filesystem with snapshots/dedup underneath — BTRFS, [JuiceFS](https://juicefs.com/) (POSIX over object storage), or even git-native content engines like [mycorrhiza](https://github.com/bouncepaw/mycorrhiza). If we go that way, **containerized deployment stops being optional** — the substrate has to ship with the app (which dovetails with W1's one-artifact install). This upgrades Tension 3 from "pick a substrate" to "pick a substrate *and* own its packaging".
+
+### W3 — Frictionless capture of any corpus object
+
+A clean UI to add anything: usually a link, but also **drag-and-drop files**. When the object arrives as a file (PDF, report, publication) with no URL, the system should **reverse-search from title/author to find the canonical link on the web** and assure the necessary metadata before the object settles into the corpus. This extends the two-tier fetch (constraint 3) with a *third entry mode*: file-first, link-recovered — the inverse of `source.add`'s link-first, body-later. The inbox (constraint 7) is the natural landing zone for objects whose canonical link or metadata is still unresolved.
+
+### W4 — SurrealDB, universal IDs, and the tenancy spectrum
+
+SurrealDB's role: smart indexing, universal IDs, metadata — the queryable layer over files-as-truth. But tenancy is a spectrum, not a policy: current collaborators **don't care** that their work feeds a multi-client Surreal instance; future users may want more **control or privacy** as a condition of using the product at all. The design needs to name its tenancy tiers explicitly (shared multi-client instance → isolated namespace → bring-your-own instance) rather than inherit whatever the first deployment happened to be. This composes with constraint 10 (client data as the privacy boundary) and closes the `org_slug` convergence gap flagged in the pain points.
+
+### W5 — Dual surfaces: Tauri-native primary, web secondary
+
+Assume **concurrent development of a Tauri native app and a web UI**. The Tauri app is the primary workspace and is also the delivery vehicle for W1's local VM/container. The web UI carries the Dropbox/Google-Drive-style browse/share experience. This substantially settles Tension 1: corpora-builder *is* an app (Option A's endpoint), but reached by the Option B→C road — model and verbs first, surfaces second.
+
+### W6 — Indexing, cross-references, and citations to Lossless conventions
+
+Corpora must be indexed for easy lookup, cross-reference, and **citation embedding per Lossless conventions** (wikilinks, hex-code citations — there is a whole Obsidian vault that manages/imposes this today; that discipline should become an **agent skill** the system carries). The target use cases are explicitly dual:
+
+1. **RAG/KAG operations** that limit agent work to tightly controlled sources (the corpus as a hard boundary, not a suggestion), and
+2. **professional consulting output** — decks and memos with proper citations. Not necessarily MLA/Chicago, but formal styles should be easy to emit when a client wants them.
+
+One corpus, two consumers; the citation metadata captured at ingest (W3's canonical-link assurance) is what makes both possible.
+
+### W7 — didi.sh is the identity and workspace layer
+
+Auth and workspace management ride on [[Id-Didi-Sh-Identity-Service|id-didi-sh]] — one account across memos, decks, augment-it, and now corpora. Workspaces, API keys, and related primitives **may need to be built into didi.sh in parallel** before corpora-builder can work properly. That makes id-didi-sh a build-order dependency, not just an integration: the corpora-builder spec should enumerate exactly which identity primitives it needs (workspace membership, roles like editor/viewer, per-workspace API keys for RAG consumers) so the didi.sh side can be specced concurrently.
+
+### Method notes (forked out)
+
+Two further wishlist items are about *how we build*, not *what*: front-loading design so a frontier model (Fable-class, Kimi-class) can build the whole system in a spec-driven TDD loop, and imposing real design-system discipline from day one (the augment-it/dididecks/memopop UIs have diverged). Those are explored in the sibling doc [[Design-Front-Loading-and-the-Fable-Build-Loop]] — kept separate so this doc stays about the system.
+
 ## Tentative direction
 
-Start with **Option B shading into C**: make this repo the canonical home of the unified domain model, frontmatter schemas, `source.*` verb vocabulary, inbox/triage lifecycle, and quality-scan tooling — as documented blueprint + runnable reference code — and only then grow the thin service/surfaces where a real engagement demands them. That sequencing mirrors how augment-it itself was built (workspace before chat) and defers the substrate/auth threads until there's a concrete consumer.
+The operator wishlist settles the destination: corpora-builder **is an app** — Tauri-native primary workspace bundling the local container, web UI in the Drive/Dropbox style, remote corpora as source of truth, didi.sh as the identity/workspace layer. But the *road* is still model-first (the old Option B→C sequencing): the domain model, frontmatter schemas, `source.*` verb vocabulary, and lifecycle get specced and proven as blueprint + reference code before surfaces multiply. That sequencing mirrors how augment-it itself was built (workspace before chat), and it is also what the front-loaded build-loop method ([[Design-Front-Loading-and-the-Fable-Build-Loop]]) requires: the loop can only run against specs that already exist.
 
 First concrete artifacts to produce from this exploration:
 
 1. A **spec** for the unified corpus domain model (Generation A ⊎ B reconciliation, frontmatter schemas as the contract).
-2. A **blueprint** for the corpus lifecycle (capture → triage → fetch → file → quality-scan → ingest), lifted from the prior art but app-agnostic.
+2. A **blueprint** for the corpus lifecycle (capture → triage → fetch → file → quality-scan → ingest), lifted from the prior art but app-agnostic — now including W3's file-first/link-recovered entry mode.
 3. The **quality-scan script** generalized from the reach-edu first-pass scan into a re-runnable, corpus-agnostic tool — the first runnable thing this repo ships.
+4. A **sync-and-checkpoint UX spec** for W1: how automated sync and "save a version" map onto git/jj underneath without exposing either, and what the Tauri app's one-artifact install actually contains.
+5. A **tenancy-tiers section** in the domain-model spec (W4): shared instance → isolated namespace → bring-your-own, with `org_slug`/workspace IDs threaded from didi.sh through SurrealDB to file frontmatter.
+6. A **didi.sh primitives list** (W7): the exact workspace/role/API-key capabilities corpora-builder needs, handed to [[Id-Didi-Sh-Identity-Service]] so the two can be built in parallel.
 
 ## Outcome
 
@@ -95,3 +145,5 @@ Open. Ends when the domain-model spec is written and signed off.
 - [[Corpus-Grounded-Generation-of-Decks-and-Memos]] — the consumption side
 - [[Two-Clients-One-Flow-Corpora-Auth-and-Deployment-Converge]] — the open substrate/auth/deployment threads
 - [[Track-and-Ingest-Lossless-Content-into-Chroma]] — the Chroma read-side pipeline
+- [[Design-Front-Loading-and-the-Fable-Build-Loop]] — sibling exploration: the build method (spec-driven loop, design-system discipline)
+- [[Id-Didi-Sh-Identity-Service]] — the identity/workspace layer this system rides on (W7)
