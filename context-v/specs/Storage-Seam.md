@@ -115,8 +115,16 @@ Phase 7).
 
 - **Real R2.** `STORE-11` runs `R2Store` against `moto`'s in-process S3 so the
   suite stays offline and fast. A real-bucket run is gated behind
-  `CORPORA_R2_DEV_BUCKET` and executed by hand before the phase is called done —
-  moto proving an S3 client correct is not the same as R2 accepting it.
+  `CORPORA_R2_LIVE=1` and executed by hand — moto proving an S3 client correct
+  is not the same as R2 accepting it.
+
+  > **Run 2026-08-08 against `reach-edu/corpora/`: all ten conformance
+  > behaviours passed identically to moto.** No divergence found — including the
+  > two most likely to differ, non-UTF-8 binary with null bytes (`STORE-09`) and
+  > non-ASCII keys with spaces (`STORE-10`). 38 tests, 16s wall clock against
+  > ~1s for moto. Every write was scoped to a unique `corpora/_conformance/<uuid>/`
+  > prefix and swept on teardown; the bucket was verified clean afterwards, since
+  > `reach-edu` is client-owned.
 - **The reach-edu round-trip.** The plan's acceptance is that the PROVING-CORPUS
   (517 files, 156MB) round-trips byte-identically. It depends on a sibling repo
   being present, so it is gated behind a path env var rather than assumed.

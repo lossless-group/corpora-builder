@@ -23,6 +23,9 @@ ever touched: `augment-it/clients/*/corpus/` is on the Autonomy-Gates RED list.
 from __future__ import annotations
 
 import inspect
+import os
+import re
+import uuid
 from pathlib import Path
 
 import boto3
@@ -43,8 +46,26 @@ BACKENDS = ["LocalFsStore", "R2Store"]
 
 TEST_BUCKET = "corpora-test-workspace"
 
+#: Opt-in third run against the real Cloudflare account. moto agreeing with
+#: boto3 proves the client is well-formed; it says nothing about what R2 does.
+#: Set CORPORA_R2_LIVE=1 with credentials in .env to find out.
+LIVE = "R2Store-live"
+_live_enabled = os.environ.get("CORPORA_R2_LIVE") == "1"
+PARAMS = [*BACKENDS, LIVE] if _live_enabled else list(BACKENDS)
 
-@pytest.fixture(params=BACKENDS)
+
+def _env() -> dict[str, str]:
+    path = Path(__file__).resolve().parents[1] / ".env"
+    out: dict[str, str] = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^\s*([A-Z0-9_]+)\s*=\s*(.*)$", line)
+            if m:
+                out[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+    return out
+
+
+@pytest.fixture(params=PARAMS)
 def store(request: pytest.FixtureRequest, tmp_path: Path):
     """One conformance run per backend.
 
@@ -53,11 +74,34 @@ def store(request: pytest.FixtureRequest, tmp_path: Path):
     """
     if request.param == "LocalFsStore":
         yield LocalFsStore(tmp_path)
-    else:
+    elif request.param == "R2Store":
         with mock_aws():
             client = boto3.client("s3", region_name="us-east-1")
             client.create_bucket(Bucket=TEST_BUCKET)
             yield R2Store(bucket=TEST_BUCKET, client=client)
+    else:
+        # Live. Every write is scoped to a unique prefix under the configured
+        # one and swept afterwards, because reach-edu is a CLIENT bucket and
+        # the Autonomy-Gates RED list forbids leaving anything behind in it.
+        env = _env()
+        client = boto3.client(
+            "s3",
+            endpoint_url=env["CLOUDFLARE_R2_API_ENDPOINT"],
+            aws_access_key_id=env["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=env["R2_SECRET_ACCESS_KEY"],
+            region_name="auto",
+        )
+        bucket = env["CORPORA_R2_BUCKET"]
+        prefix = f"{env.get('CORPORA_R2_PREFIX', '')}_conformance/{uuid.uuid4().hex}/"
+        live = R2Store(bucket=bucket, client=client, prefix=prefix)
+        try:
+            yield live
+        finally:
+            for key in live.list():
+                try:
+                    live.delete(key)
+                except Exception:  # noqa: BLE001 - teardown must not mask a failure
+                    pass
 
 
 # ---------------------------------------------------------------------------

@@ -75,11 +75,22 @@ def main() -> int:
     )
 
     try:
-        names = [b["Name"] for b in client.list_buckets()["Buckets"]]
-        print(f"\n✓ authenticated — {len(names)} bucket(s): {', '.join(sorted(names))}")
-        if bucket not in names:
-            print(f"\n✗ '{bucket}' is not among them.", file=sys.stderr)
-            return 1
+        # A bucket-scoped token cannot enumerate the account, and that is the
+        # BETTER posture — it is the structural isolation the design wants. So
+        # AccessDenied here is information, not failure; fall through to probing
+        # the configured bucket directly.
+        try:
+            names = [b["Name"] for b in client.list_buckets()["Buckets"]]
+            print(f"\n✓ authenticated — {len(names)} bucket(s): {', '.join(sorted(names))}")
+            if bucket not in names:
+                print(f"\n✗ '{bucket}' is not among them.", file=sys.stderr)
+                return 1
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] not in ("AccessDenied", "InvalidAccessKeyId"):
+                raise
+            print("\n✓ authenticated — token is scoped to a bucket (cannot list the account)")
+            client.head_bucket(Bucket=bucket)
+            print(f"✓ '{bucket}' reachable")
 
         key = f"{prefix}{PROBE_KEY}"
         client.put_object(Bucket=bucket, Key=key, Body=b"corpora-builder probe\n")
