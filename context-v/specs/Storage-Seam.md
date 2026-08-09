@@ -94,6 +94,7 @@ Phase 7).
 | `STORE-11` | Given the conformance suite above, when it runs against `LocalFsStore` and `R2Store` in turn, then every test passes against both with no implementation-specific branching in the test bodies |
 | `STORE-12` | Given a `CachedStore` over a counting backing store, when the same key is read twice, then the backing store is read exactly once |
 | `STORE-13` | Given a `CachedStore` that has cached a key, when that key is written through the cache and then read, then the new value is returned — a stale cache never wins |
+| `STORE-14` | Given the PROVING-CORPUS on disk, when every key is copied through a store and read back, then the file count matches and every file's sha256 is unchanged |
 | `WORKSPACE-01` | Given a static resolver configured with a workspace slug, when the workspace is resolved, then the slug and display name are returned |
 | `WORKSPACE-02` | Given a resolved workspace slug, when the bucket name is derived, then it is `corpora-<slug>` and no call site contains a literal bucket name |
 

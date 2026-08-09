@@ -34,6 +34,11 @@ GREEN = "GREEN"
 RED = "RED"
 MISSING = "MISSING"
 RETIRED = "RETIRED"
+#: A test that exists and deliberately did not run — its gate (an env var, a
+#: sibling repo, real credentials) was not set. Not a failure: skipping is what
+#: the gate is FOR. But not green either, so --require-green still refuses to
+#: call a spec complete until someone has actually run it.
+GATED = "GATED"
 
 #: Worst-wins ordering. A test that errors during setup is not green merely
 #: because its never-executed call phase did not fail.
@@ -111,4 +116,9 @@ def classify(spec_id: str, results: dict[str, SpecEntry]) -> str:
     entry = results.get(spec_id)
     if entry is None:
         return MISSING
-    return GREEN if entry.get("outcome") == "passed" else RED
+    outcome = entry.get("outcome")
+    if outcome == "passed":
+        return GREEN
+    if outcome == "skipped":
+        return GATED
+    return RED

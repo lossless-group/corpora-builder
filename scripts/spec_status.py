@@ -45,6 +45,7 @@ RESULTS_PATH = REPO_ROOT / ".spec-results.json"
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.ledger import (  # noqa: E402
+    GATED,
     GREEN,
     MISSING,
     RED,
@@ -53,7 +54,7 @@ from src.ledger import (  # noqa: E402
     parse_spec_ids,
 )
 
-_GLYPH = {GREEN: "✓", RED: "✗", MISSING: "○", RETIRED: "—"}
+_GLYPH = {GREEN: "✓", RED: "✗", MISSING: "○", RETIRED: "—", GATED: "⊘"}
 _BOLD, _DIM, _OFF = "\033[1m", "\033[2m", "\033[0m"
 _REDC, _GREENC = "\033[31m", "\033[32m"
 
@@ -109,7 +110,7 @@ def main() -> int:
         print()
     results = load_results()
 
-    totals = {GREEN: 0, RED: 0, MISSING: 0, RETIRED: 0}
+    totals = {GREEN: 0, RED: 0, MISSING: 0, RETIRED: 0, GATED: 0}
     saw_any = False
 
     for spec_file in spec_files:
@@ -136,7 +137,7 @@ def main() -> int:
 
     print(
         f"{_BOLD}Totals{_OFF}  {totals[GREEN]} green · {totals[RED]} red · "
-        f"{totals[MISSING]} missing · {totals[RETIRED]} retired"
+        f"{totals[GATED]} gated · {totals[MISSING]} missing · {totals[RETIRED]} retired"
     )
 
     if totals[MISSING]:
@@ -149,10 +150,12 @@ def main() -> int:
         )
         return 1
 
-    if args.require_green and totals[RED]:
+    if args.require_green and (totals[RED] or totals[GATED]):
         print(
-            f"\n{_REDC}FAIL{_OFF}  --require-green: {totals[RED]} ID(s) are red. "
-            f"The spec is not complete.\n"
+            f"\n{_REDC}FAIL{_OFF}  --require-green: {totals[RED]} red, "
+            f"{totals[GATED]} gated. The spec is not complete.\n"
+            f"      A gated ID means a deliberate run nobody has done yet — set "
+            f"its env var and run it.\n"
             f"      Do NOT edit a test to close this gap — see "
             f"context-v/contracts/Autonomy-Gates.md, Gate 3.",
             file=sys.stderr,
