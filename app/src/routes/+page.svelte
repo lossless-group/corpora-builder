@@ -176,36 +176,36 @@
   .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .capture { margin-top: 10px; }
   h1 { font-size: 14.5px; margin: 0; font-weight: 620; letter-spacing: -.01em; }
-  h1 span { color: var(--dim); font-weight: 420; font-size: 13px; }
-  input, select, button { font: inherit; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  h1 span { color: var(--ink-dim); font-weight: 420; font-size: 13px; }
+  input, select, button { font: inherit; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
   input[type='search'], .capture input:first-of-type { flex: 1; min-width: 200px; }
   .dom { width: 190px; }
-  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); flex: 0 0 auto; white-space: nowrap; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); flex: 0 0 auto; white-space: nowrap; }
   .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--accent); }
   button { cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  .ro { margin: 8px 0 0; font-size: 12.5px; color: var(--dim); }
-  code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .ro { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-dim); }
+  code { font-family: var(--font-mono); font-size: 12px; }
   main { padding: 16px 18px 60px; max-width: 1100px; }
-  .count { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
-  .note { color: var(--dim); padding: 10px 0; }
+  .count { color: var(--ink-dim); font-size: 13px; margin: 0 0 12px; }
+  .note { color: var(--ink-dim); padding: 10px 0; }
   .note.ok { color: var(--accent); }
   .note.err { color: var(--warn); }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-  li { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+  li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); }
   li.err { border-color: var(--warn); }
-  .card { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 12px 14px; border-radius: 10px; }
-  .card:hover { background: var(--chip); }
+  .card { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 12px 14px; border-radius: var(--radius-md); }
+  .card:hover { background: var(--surface-hover); }
   .t { font-weight: 580; margin-bottom: 3px; }
   li.err .t { color: var(--warn); }
-  .x { color: var(--dim); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
-  .e { color: var(--dim); font-size: 13.5px; }
+  .x { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
+  .e { color: var(--ink-dim); font-size: 13.5px; }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: 100px; background: var(--chip); color: var(--dim); }
-  .chip.on { background: var(--accent); color: var(--bg); }
+  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); color: var(--ink-dim); }
+  .chip.on { background: var(--accent); color: var(--accent-ink); }
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 24px; }
-  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; max-width: min(880px, 94vw); width: 100%; }
+  .modal { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
   .mhead { border-bottom: 1px solid var(--line); padding: 12px 16px; }
   .mhead h1 { flex: 1; }
-  pre { margin: 0; padding: 16px 18px; overflow: auto; font-size: 12.5px; font-family: ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; max-height: 66vh; }
+  pre { margin: 0; padding: 16px 18px; overflow: auto; font-size: 12.5px; font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 66vh; }
 </style>
