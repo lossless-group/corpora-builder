@@ -6,9 +6,10 @@ MVP plan — the shape a future `PosixStore` over BTRFS/ZFS would take.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
-from src.store.base import CorpusStore, ObjectStat
+from src.store.base import CorpusStore, KeyNotFound, ObjectStat
 
 
 class LocalFsStore(CorpusStore):
@@ -17,20 +18,35 @@ class LocalFsStore(CorpusStore):
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
 
+    def _path(self, key: str) -> Path:
+        return self.root / key
+
     def read(self, key: str) -> bytes:
-        raise NotImplementedError
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyNotFound(key)
+        return path.read_bytes()
 
     def write(self, key: str, data: bytes) -> None:
-        raise NotImplementedError
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
 
     def exists(self, key: str) -> bool:
-        raise NotImplementedError
+        return self._path(key).is_file()
 
     def stat(self, key: str) -> ObjectStat:
-        raise NotImplementedError
+        data = self.read(key)
+        return ObjectStat(size=len(data), content_hash=hashlib.sha256(data).hexdigest())
 
     def list(self, prefix: str = "") -> list[str]:
-        raise NotImplementedError
+        if not self.root.is_dir():
+            return []
+        keys = (str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_file())
+        return sorted(k for k in keys if k.startswith(prefix))
 
     def delete(self, key: str) -> None:
-        raise NotImplementedError
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyNotFound(key)
+        path.unlink()

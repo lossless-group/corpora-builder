@@ -52,4 +52,4 @@ class WorkspaceResolver(ABC):
 
 def bucket_for(workspace: Workspace) -> str:
     """The R2 bucket holding `workspace`'s corpus."""
-    raise NotImplementedError
+    return f"{BUCKET_PREFIX}{workspace.slug}"

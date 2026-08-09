@@ -18,4 +18,4 @@ class StaticWorkspaceResolver(WorkspaceResolver):
         self.display_name = display_name
 
     def resolve(self) -> Workspace:
-        raise NotImplementedError
+        return Workspace(slug=self.slug, display_name=self.display_name)

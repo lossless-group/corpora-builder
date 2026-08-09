@@ -159,9 +159,16 @@ def main() -> int:
         )
         return 2
 
-    if args.tdd_floor and totals[GREEN]:
+    structural_green = sum(
+        1
+        for f in spec_files
+        for sid in parse_spec_ids(f)[0]
+        if classify(sid, results) == GREEN and results.get(sid, {}).get("structural")
+    )
+    if args.tdd_floor and (totals[GREEN] - structural_green):
         print(
-            f"\n{_REDC}FAIL{_OFF}  --tdd-floor: {totals[GREEN]} ID(s) are already green "
+            f"\n{_REDC}FAIL{_OFF}  --tdd-floor: "
+            f"{totals[GREEN] - structural_green} ID(s) are already green "
             f"before implementation.\n"
             f"      A test that passes before the code exists is not testing the code.",
             file=sys.stderr,

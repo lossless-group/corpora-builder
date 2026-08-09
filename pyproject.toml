@@ -45,6 +45,7 @@ testpaths = ["tests"]
 addopts = "--strict-markers"
 markers = [
     "spec(id): bind this test to a spec test ID, e.g. @pytest.mark.spec('CAPTURE-01')",
+    "structural: a guard over the suite's own shape, not over code under test. Exempt from --tdd-floor: it is green from the moment the names exist, which is correct.",
 ]
 
 [tool.black]

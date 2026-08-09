@@ -163,8 +163,14 @@ def test_non_ascii_and_spaced_keys_round_trip(store: CorpusStore) -> None:
 
 
 @pytest.mark.spec("STORE-11")
+@pytest.mark.structural
 def test_every_concrete_backend_is_covered_by_the_conformance_fixture() -> None:
     """Adding a backend without adding it to BACKENDS fails here.
+
+    Marked `structural`: this guards the shape of the suite, not the code under
+    test, so it is green from the moment the class names exist. That is correct,
+    and it is why --tdd-floor exempts it rather than reporting a false red-first
+    violation.
 
     `CachedStore` is excluded on purpose: it is a decorator over another store,
     not a substrate, and it has its own tests below. Everything else that claims

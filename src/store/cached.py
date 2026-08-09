@@ -24,19 +24,28 @@ class CachedStore(CorpusStore):
         self._cache: dict[str, bytes] = {}
 
     def read(self, key: str) -> bytes:
-        raise NotImplementedError
+        if key in self._cache:
+            return self._cache[key]
+        data = self.backing.read(key)
+        self._cache[key] = data
+        return data
 
     def write(self, key: str, data: bytes) -> None:
-        raise NotImplementedError
+        # Invalidate rather than populate. Populating would hide a backing-store
+        # write failure behind a cache hit, and the next read would report
+        # success for bytes that never landed.
+        self.backing.write(key, data)
+        self._cache.pop(key, None)
 
     def exists(self, key: str) -> bool:
-        raise NotImplementedError
+        return self.backing.exists(key)
 
     def stat(self, key: str) -> ObjectStat:
-        raise NotImplementedError
+        return self.backing.stat(key)
 
     def list(self, prefix: str = "") -> list[str]:
-        raise NotImplementedError
+        return self.backing.list(prefix)
 
     def delete(self, key: str) -> None:
-        raise NotImplementedError
+        self.backing.delete(key)
+        self._cache.pop(key, None)

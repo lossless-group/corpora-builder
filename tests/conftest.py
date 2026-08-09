@@ -28,6 +28,7 @@ RESULTS_PATH = Path(__file__).parent.parent / ".spec-results.json"
 # back to the config object, so the report hook cannot reach it.
 _spec_ids_by_node: dict[str, list[str]] = {}
 _outcome_by_node: dict[str, str] = {}
+_structural_ids: set[str] = set()
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -37,14 +38,18 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     _spec_ids_by_node.clear()
     _outcome_by_node.clear()
+    _structural_ids.clear()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Map every collected test to the spec IDs it claims."""
     for item in items:
+        is_structural = any(item.iter_markers(name="structural"))
         for marker in item.iter_markers(name="spec"):
             for spec_id in marker.args:
                 _spec_ids_by_node.setdefault(item.nodeid, []).append(str(spec_id))
+                if is_structural:
+                    _structural_ids.add(str(spec_id))
 
 
 def pytest_runtest_logreport(report: pytest.TestReport) -> None:
@@ -58,4 +63,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 def pytest_sessionfinish() -> None:
     """Join outcomes onto spec IDs and write the results file."""
     results = join_outcomes(_spec_ids_by_node, _outcome_by_node)
+    for spec_id in _structural_ids:
+        if spec_id in results:
+            results[spec_id]["structural"] = True  # type: ignore[typeddict-unknown-key]
     RESULTS_PATH.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")

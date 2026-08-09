@@ -15,9 +15,18 @@ in a didi.sh-backed workspace resolver a swap rather than a search-and-replace.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from src.store.base import CorpusStore, ObjectStat
+from botocore.exceptions import ClientError
+
+from src.store.base import CorpusStore, KeyNotFound, ObjectStat
+
+#: sha256 is stashed as object metadata on write so `stat` costs one HEAD rather
+#: than a full download. R2's ETag is an md5 of the upload, not of the content
+#: for multipart, so it is not a substitute. Objects written by anything other
+#: than corpora-builder will not carry it — hence the fallback in `stat`.
+_SHA_KEY = "sha256"
 
 
 class R2Store(CorpusStore):
@@ -27,20 +36,55 @@ class R2Store(CorpusStore):
         self.bucket = bucket
         self.client = client
 
+    def _head(self, key: str) -> dict[str, Any]:
+        try:
+            return dict(self.client.head_object(Bucket=self.bucket, Key=key))
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+                raise KeyNotFound(key) from exc
+            raise
+
     def read(self, key: str) -> bytes:
-        raise NotImplementedError
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
+                raise KeyNotFound(key) from exc
+            raise
+        body: bytes = response["Body"].read()
+        return body
 
     def write(self, key: str, data: bytes) -> None:
-        raise NotImplementedError
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=key,
+            Body=data,
+            Metadata={_SHA_KEY: hashlib.sha256(data).hexdigest()},
+        )
 
     def exists(self, key: str) -> bool:
-        raise NotImplementedError
+        try:
+            self._head(key)
+        except KeyNotFound:
+            return False
+        return True
 
     def stat(self, key: str) -> ObjectStat:
-        raise NotImplementedError
+        head = self._head(key)
+        digest = head.get("Metadata", {}).get(_SHA_KEY)
+        if not digest:
+            digest = hashlib.sha256(self.read(key)).hexdigest()
+        return ObjectStat(size=int(head["ContentLength"]), content_hash=digest)
 
     def list(self, prefix: str = "") -> list[str]:
-        raise NotImplementedError
+        keys: list[str] = []
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            keys.extend(obj["Key"] for obj in page.get("Contents", []))
+        return sorted(keys)
 
     def delete(self, key: str) -> None:
-        raise NotImplementedError
+        # S3 delete is idempotent and reports success for absent keys, so the
+        # existence check is ours to make — the interface promises KeyNotFound.
+        self._head(key)
+        self.client.delete_object(Bucket=self.bucket, Key=key)
