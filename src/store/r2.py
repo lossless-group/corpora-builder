@@ -32,13 +32,21 @@ _SHA_KEY = "sha256"
 class R2Store(CorpusStore):
     """Keys become object keys in `bucket`."""
 
-    def __init__(self, bucket: str, client: Any) -> None:
+    def __init__(self, bucket: str, client: Any, prefix: str = "") -> None:
         self.bucket = bucket
         self.client = client
+        # Scoped transparently: callers pass "live/a.md", the object lands at
+        # "<prefix>live/a.md", and list() hands back the unprefixed key. That is
+        # what lets a corpus share a client's existing bucket without every
+        # call site learning about it.
+        self.prefix = prefix
+
+    def _k(self, key: str) -> str:
+        return f"{self.prefix}{key}"
 
     def _head(self, key: str) -> dict[str, Any]:
         try:
-            return dict(self.client.head_object(Bucket=self.bucket, Key=key))
+            return dict(self.client.head_object(Bucket=self.bucket, Key=self._k(key)))
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
                 raise KeyNotFound(key) from exc
@@ -46,7 +54,7 @@ class R2Store(CorpusStore):
 
     def read(self, key: str) -> bytes:
         try:
-            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            response = self.client.get_object(Bucket=self.bucket, Key=self._k(key))
         except ClientError as exc:
             if exc.response["Error"]["Code"] in ("404", "NoSuchKey", "NotFound"):
                 raise KeyNotFound(key) from exc
@@ -57,7 +65,7 @@ class R2Store(CorpusStore):
     def write(self, key: str, data: bytes) -> None:
         self.client.put_object(
             Bucket=self.bucket,
-            Key=key,
+            Key=self._k(key),
             Body=data,
             Metadata={_SHA_KEY: hashlib.sha256(data).hexdigest()},
         )
@@ -79,12 +87,12 @@ class R2Store(CorpusStore):
     def list(self, prefix: str = "") -> list[str]:
         keys: list[str] = []
         paginator = self.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
-            keys.extend(obj["Key"] for obj in page.get("Contents", []))
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=self._k(prefix)):
+            keys.extend(obj["Key"][len(self.prefix) :] for obj in page.get("Contents", []))
         return sorted(keys)
 
     def delete(self, key: str) -> None:
         # S3 delete is idempotent and reports success for absent keys, so the
         # existence check is ours to make — the interface promises KeyNotFound.
         self._head(key)
-        self.client.delete_object(Bucket=self.bucket, Key=key)
+        self.client.delete_object(Bucket=self.bucket, Key=self._k(key))

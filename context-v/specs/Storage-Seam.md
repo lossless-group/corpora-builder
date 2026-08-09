@@ -72,10 +72,21 @@ Phase 7).
 7. `CachedStore` wraps any other store with a local read-through cache. A second
    read of unchanged content does not reach the backing store. A write
    invalidates that key.
-8. `WorkspaceResolver` returns a workspace identity — slug plus display name.
-   `StaticWorkspaceResolver` reads it from config. Nothing else in the codebase
-   names a bucket; the bucket name is derived from the resolved slug so that
+8. `WorkspaceResolver` returns a workspace identity — slug, display name, and
+   **its storage location (bucket + prefix)**. `StaticWorkspaceResolver` reads
+   it from config. Nothing outside a resolver names a bucket or a prefix, so
    swapping in a didi.sh-backed resolver later changes no call site.
+9. A store may be scoped to a key prefix. Scoping is transparent: callers pass
+   unprefixed keys and `list` returns unprefixed keys. This is what lets a
+   corpus share a bucket a client already uses for other things.
+
+> **Amended 2026-08-08, during implementation.** Behaviour 8 originally said the
+> bucket was *derived* as `corpora-<slug>`. First contact with the real account
+> disproved it: the corpus lives in bucket `reach-edu` under prefix `corpora/`.
+> Buckets are provisioned by people, sometimes before this tool existed, so a
+> derivation rule cannot be the source of truth — it survives only as the
+> default for newly provisioned workspaces (`WORKSPACE-03`). The spec was wrong;
+> the test was not weakened to fit the code.
 
 ## Tests
 
@@ -96,7 +107,9 @@ Phase 7).
 | `STORE-13` | Given a `CachedStore` that has cached a key, when that key is written through the cache and then read, then the new value is returned — a stale cache never wins |
 | `STORE-14` | Given the PROVING-CORPUS on disk, when every key is copied through a store and read back, then the file count matches and every file's sha256 is unchanged |
 | `WORKSPACE-01` | Given a static resolver configured with a workspace slug, when the workspace is resolved, then the slug and display name are returned |
-| `WORKSPACE-02` | Given a resolved workspace slug, when the bucket name is derived, then it is `corpora-<slug>` and no call site contains a literal bucket name |
+| `WORKSPACE-02` | Given a workspace resolved from config, when its storage location is read, then the bucket comes from the workspace record rather than a derivation — reality: `reach-edu`, not `corpora-reach-edu` |
+| `WORKSPACE-03` | Given a workspace with no bucket recorded, when it is resolved, then it gets the provisioning default `corpora-<slug>` |
+| `WORKSPACE-04` | Given a store scoped to a prefix, when a key is written and listed, then the caller sees the unprefixed key and the object lands under the prefix — the prefix is invisible above the seam |
 
 **Not in the automated suite, run deliberately:**
 

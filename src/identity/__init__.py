@@ -6,7 +6,7 @@ from src.identity.base import (
     BUCKET_PREFIX,
     Workspace,
     WorkspaceResolver,
-    bucket_for,
+    default_bucket_name,
 )
 from src.identity.static import StaticWorkspaceResolver
 
@@ -15,5 +15,5 @@ __all__ = [
     "StaticWorkspaceResolver",
     "Workspace",
     "WorkspaceResolver",
-    "bucket_for",
+    "default_bucket_name",
 ]

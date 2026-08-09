@@ -33,7 +33,7 @@ from src.identity import (
     BUCKET_PREFIX,
     StaticWorkspaceResolver,
     Workspace,
-    bucket_for,
+    default_bucket_name,
 )
 from src.store import CachedStore, CorpusStore, KeyNotFound, LocalFsStore, R2Store
 
@@ -230,18 +230,58 @@ def test_write_through_the_cache_invalidates_it(tmp_path: Path) -> None:
 
 @pytest.mark.spec("WORKSPACE-01")
 def test_static_resolver_returns_its_configured_workspace() -> None:
-    resolver = StaticWorkspaceResolver(slug="reach-edu", display_name="Reach Edu")
+    resolver = StaticWorkspaceResolver(
+        slug="reach-edu", display_name="Reach Edu", bucket="reach-edu", prefix="corpora/"
+    )
 
     workspace = resolver.resolve()
 
-    assert workspace == Workspace(slug="reach-edu", display_name="Reach Edu")
+    assert workspace == Workspace(
+        slug="reach-edu",
+        display_name="Reach Edu",
+        bucket="reach-edu",
+        prefix="corpora/",
+    )
 
 
 @pytest.mark.spec("WORKSPACE-02")
-def test_bucket_name_derives_from_the_workspace_slug() -> None:
-    workspace = Workspace(slug="reach-edu", display_name="Reach Edu")
+def test_workspace_carries_its_own_storage_location() -> None:
+    """The bucket is a fact on the record, not a derivation.
 
-    assert bucket_for(workspace) == f"{BUCKET_PREFIX}reach-edu"
+    Phase 1 assumed `corpora-<slug>` and reality disagreed on first contact: the
+    real corpus lives in bucket `reach-edu` under prefix `corpora/`. Buckets get
+    provisioned by people, sometimes before this tool existed.
+    """
+    resolver = StaticWorkspaceResolver(
+        slug="reach-edu", display_name="Reach Edu", bucket="reach-edu", prefix="corpora/"
+    )
+
+    assert resolver.resolve().bucket == "reach-edu"
+
+
+@pytest.mark.spec("WORKSPACE-03")
+def test_a_new_workspace_gets_the_default_bucket_convention() -> None:
+    """The derivation survives, but only for buckets nobody has made yet."""
+    assert default_bucket_name("humain-vc") == f"{BUCKET_PREFIX}humain-vc"
+    assert StaticWorkspaceResolver("humain-vc", "Humain VC").resolve().bucket == (
+        f"{BUCKET_PREFIX}humain-vc"
+    )
+
+
+@pytest.mark.spec("WORKSPACE-04")
+def test_store_prefix_is_transparent_above_the_seam(tmp_path: Path) -> None:
+    """A prefixed store behaves exactly like an unprefixed one to its caller."""
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket="client-bucket")
+        store = R2Store(bucket="client-bucket", client=client, prefix="corpora/")
+
+        store.write("live/a.md", b"x")
+
+        assert store.read("live/a.md") == b"x"
+        assert store.list("live/") == ["live/a.md"]
+        raw = client.list_objects_v2(Bucket="client-bucket")["Contents"]
+        assert [o["Key"] for o in raw] == ["corpora/live/a.md"]
 
 
 @pytest.mark.spec("WORKSPACE-02")
