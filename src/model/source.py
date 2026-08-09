@@ -209,11 +209,20 @@ class SourceFile:
             emit_as = self.aliases_used.get(name, name)
             if value in (None, "", [], {}):
                 continue
-            # Emit only what the file carried, plus anything genuinely set.
-            # A newly constructed source has no present_keys, so its non-default
-            # values all emit; a parsed one re-emits what it read and nothing more.
-            if emit_as not in self.present_keys and value == defaults.get(name):
+            # `rank: 0` means unranked, which is what absence already says.
+            # `content_pulled: false` is NOT the same as absent — it asserts we
+            # deliberately have not fetched, which is the two-tier gate's whole
+            # record. So this suppression is one field, not a rule about falsy.
+            if name == "rank" and not value:
                 continue
+            # A PARSED source re-emits what it carried and nothing more, so
+            # reading a file never accretes defaults it did not assert. A NEWLY
+            # CONSTRUCTED one emits everything non-empty, because a fresh source
+            # file that omits `status: candidate` is not stating its own
+            # lifecycle — and the whole schema turns on that field.
+            if self.present_keys and emit_as not in self.present_keys:
+                if value == defaults.get(name):
+                    continue
             data[emit_as] = value
 
         for key, value in self.unknown.items():
