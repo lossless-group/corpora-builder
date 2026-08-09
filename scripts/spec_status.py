@@ -12,11 +12,11 @@ begin with a stable ID. Every test function that implements one carries
 
 Usage
 -----
-    uv run python ../scripts/spec_status.py                 # from core/
-    uv run python ../scripts/spec_status.py --spec Loop-Harness
-    uv run python ../scripts/spec_status.py --require-green # spec-completion gate
-    uv run python ../scripts/spec_status.py --tdd-floor     # after writing failing tests
-    uv run python ../scripts/spec_status.py --no-run        # reuse last results
+    uv run python scripts/spec_status.py                 # from the repo root
+    uv run python scripts/spec_status.py --spec Loop-Harness
+    uv run python scripts/spec_status.py --require-green # spec-completion gate
+    uv run python scripts/spec_status.py --tdd-floor     # after writing failing tests
+    uv run python scripts/spec_status.py --no-run        # reuse last results
 
 Exit codes
 ----------
@@ -40,12 +40,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPECS_DIR = REPO_ROOT / "context-v" / "specs"
-CORE_DIR = REPO_ROOT / "core"
-RESULTS_PATH = CORE_DIR / ".spec-results.json"
+RESULTS_PATH = REPO_ROOT / ".spec-results.json"
 
-sys.path.insert(0, str(CORE_DIR / "src"))
+sys.path.insert(0, str(REPO_ROOT))
 
-from corpora.ledger import (  # noqa: E402
+from src.ledger import (  # noqa: E402
     GREEN,
     MISSING,
     RED,
@@ -63,7 +62,7 @@ def run_pytest() -> int:
     """Run the suite so the results file is fresh. Returns pytest's exit code."""
     proc = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "--tb=line"],
-        cwd=CORE_DIR,
+        cwd=REPO_ROOT,
     )
     return proc.returncode
 

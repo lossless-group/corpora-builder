@@ -60,37 +60,79 @@ or a group of issues resolving. Not per commit.
 ## Commands
 
 ```bash
-cd core
+uv sync --extra dev            # install
 
-uv sync                                   # install
-uv run pytest                             # the suite
-uv run pytest -m "spec"                   # only spec-bound tests
-uv run ruff check . && uv run ruff format --check .
-uv run mypy src
+bash scripts/check.sh          # THE LADDER — black, ruff, mypy, pytest, ledger
 
-uv run python ../scripts/spec_status.py   # THE LEDGER — derived status per spec
-uv run python ../scripts/spec_status.py --spec Capture-Sources   # one spec
+uv run pytest                  # the suite alone
+uv run python scripts/spec_status.py                  # THE LEDGER
+uv run python scripts/spec_status.py --spec Capture   # one spec
 ```
 
 `spec_status.py` exits non-zero when any spec test ID has no implementing test
 function. That is deliberate: it makes "I forgot to write that test" a build
 failure rather than an oversight.
 
+`check.sh` runs mypy **non-blocking** and prints its error count in the summary.
+Report that count in any run summary — a non-blocking check that nobody reads
+decays into noise, and printing it in the standard output is the mitigation. If
+the count climbs and stays climbed, promote it to blocking.
+
 ## Layout
+
+Flat `src/` at the repo root with `src.`-prefixed absolute imports — converged
+from `memopop-orchestrator`, whose Rust `SidecarManager` spawns
+`.venv/bin/python -m src.server`. Matching it makes the Phase 7 sidecar copy
+near-mechanical.
 
 | Path | Purpose |
 |---|---|
-| `core/` | The Python package (`corpora`). `uv`-managed. |
-| `core/src/corpora/store/` | The storage seam — `CorpusStore` ABC, local + R2 implementations |
-| `core/src/corpora/model/` | Frontmatter and domain models |
-| `core/src/corpora/capture/` | Link-first and file-first capture |
-| `core/src/corpora/history/` | Content-addressed objects + checkpoint manifests |
-| `core/tests/` | Tests, marked with their spec IDs |
-| `scripts/spec_status.py` | The ledger |
+| `src/ledger.py` | Spec-ID parsing and outcome joining — the loop's bookkeeping |
+| `src/store/` | The storage seam — `CorpusStore` ABC, local + R2 implementations |
+| `src/model/` | Frontmatter and domain models |
+| `src/capture/` | Link-first and file-first capture |
+| `src/history/` | Content-addressed objects + checkpoint manifests |
+| `src/identity/` | `WorkspaceResolver` seam — static config now, didi.sh at Phase 7 |
+| `src/server/` | FastAPI sidecar — Phase 7 |
+| `tests/` | Tests, marked with their spec IDs |
+| `scripts/` | `spec_status.py` (the ledger), `check.sh` (the ladder) |
 | `context-v/` | Living documentation — see the context-vigilance skill |
 | `changelog/` | Ship log |
-| `splash/` | GitHub-Pages splash (scaffold pending) |
-| `app/` | Tauri shell — not until Phase 7 |
+| `app/` | Tauri shell — Phase 7 |
+
+## House style — converged from memopop-ai
+
+Patterns travel knots-style here: copy-from, never a shared package. These are
+adopted deliberately, and divergence gets documented rather than invented
+silently.
+
+**Doc comments are the strongest shared convention, in both languages.** Module
+docstrings explain *why*, cite the governing spec or blueprint, and enumerate
+load-bearing rules as a numbered list. Inline comments name the trap. Compare
+`memopop-orchestrator/src/curation/source_file.py` (three numbered rules up top)
+and `memopop-native/src/lib/stores/sources.svelte.ts` ("No language model
+proposes a source — that is the invariant the whole design rests on"). Match
+that voice.
+
+| Concern | Convention |
+|---|---|
+| Layout | flat `src/`, `from src.x.y import z`, relative imports within a package |
+| Domain models | **`@dataclass`**, not pydantic — matches `source_file.py` |
+| Frontmatter key order | a fixed `FIELD_ORDER` list, never alphabetical, so a diff shows what changed rather than a reshuffle |
+| Formatting | **black**, line-length 100, target py311 |
+| Linting | ruff, same line length; `E,F,I,UP,B` |
+| Types | mypy, `disallow_untyped_defs`, **non-blocking** |
+| Versioning | setuptools-scm from git tags (`v0.1.0`) |
+| Dev deps | `[project.optional-dependencies] dev` |
+| Terminal output | `rich` |
+| Tests | `tests/test_<module>.py`, module docstring naming what's covered, section banner comments, `@pytest.mark.parametrize`, everything under `tmp_path` |
+
+**Phase 7 (frontend) inherits from `memopop-native`:** SvelteKit + `adapter-static`
++ Svelte 5 runes, TypeScript with `svelte-check` as the gate,
+`src/lib/{transport,stores,components}`, stores named `<name>.svelte.ts`, `$lib/`
+alias, PascalCase components. The **transport seam is two methods** —
+`request()` / `subscribeEvents()` — and memopop's CLAUDE.md warns against adding
+a third casually. Inherit that restraint.
 
 ## Skills to load
 

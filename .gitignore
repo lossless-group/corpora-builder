@@ -26,3 +26,6 @@ context-v/extra/
 
 # Local corpus mirrors — reconstituted from R2 via rclone, never source of truth
 .corpus-cache/
+
+# setuptools build artifact
+*.egg-info/

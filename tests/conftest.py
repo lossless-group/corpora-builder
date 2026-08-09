@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from corpora.ledger import SEVERITY, join_outcomes
+from src.ledger import SEVERITY, join_outcomes
 
 RESULTS_PATH = Path(__file__).parent.parent / ".spec-results.json"
 

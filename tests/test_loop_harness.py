@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from corpora.ledger import GREEN, MISSING, RED, classify, join_outcomes, parse_spec_ids
+from src.ledger import GREEN, MISSING, RED, classify, join_outcomes, parse_spec_ids
 
 
 @pytest.mark.spec("HARNESS-01")
