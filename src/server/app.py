@@ -12,17 +12,51 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
+from src.capture import JinaFetcher, add_source
 from src.server.browse import list_sources, load_source
 from src.store import CorpusStore, KeyNotFound
 
 STATIC = Path(__file__).parent / "static"
 
 
-def create_app(store: CorpusStore, label: str = "corpus") -> FastAPI:
+def create_app(store: CorpusStore, label: str = "corpus", writable: bool = False) -> FastAPI:
+    """The sidecar.
+
+    `writable` is a SERVER-level decision, not a per-request one. The first
+    thing this surface was ever pointed at was a client corpus on the
+    Autonomy-Gates RED list; read-only made that safe, and a browse tool that
+    silently gained the ability to write into one is the accident worth
+    designing against. Gate the step that changes things, and make the gate
+    something you pass through deliberately.
+    """
     app = FastAPI(title="corpora-builder", docs_url=None, redoc_url=None)
+
+    # The Tauri webview talks to this sidecar directly over localhost rather
+    # than through a Rust forwarding layer — which is what keeps the Rust side
+    # to spawn/health-check/kill instead of memopop's ~800-line dispatcher. The
+    # cost is that Tauri's origins are part of the CORS contract, and a new one
+    # silently fails as a browser error rather than a server one.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "tauri://localhost",
+            "http://tauri.localhost",
+            "https://tauri.localhost",
+            "http://localhost:1420",
+            "http://127.0.0.1:1420",
+        ],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, object]:
+        """What the Tauri SidecarManager probes before and after spawning."""
+        return {"ok": True, "label": label, "writable": writable}
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -31,7 +65,12 @@ def create_app(store: CorpusStore, label: str = "corpus") -> FastAPI:
     @app.get("/api/meta")
     def meta() -> dict[str, object]:
         listing = list_sources(store, limit=0)
-        return {"label": label, "total": listing.total, "domains": listing.domains}
+        return {
+            "label": label,
+            "total": listing.total,
+            "domains": listing.domains,
+            "writable": writable,
+        }
 
     @app.get("/api/sources")
     def sources(
@@ -55,5 +94,28 @@ def create_app(store: CorpusStore, label: str = "corpus") -> FastAPI:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except KeyNotFound as exc:
             raise HTTPException(status_code=404, detail=f"not found: {path}") from exc
+
+    @app.post("/api/capture")
+    def capture(
+        url: str = Body(..., embed=True),
+        domain: str | None = Body(None, embed=True),
+        full: bool = Body(False, embed=True),
+    ) -> dict[str, object]:
+        if not writable:
+            raise HTTPException(
+                status_code=403,
+                detail="this server is read-only; restart with --writable to capture",
+            )
+        result = add_source(store, url, JinaFetcher(), domain=domain or None, full=full)
+        source = result.source
+        return {
+            "path": result.path,
+            "created": result.created,
+            "duplicate_of": result.duplicate_of,
+            "title": source.title,
+            "status": source.status,
+            "content_pulled": source.content_pulled,
+            "machine_verdict": source.machine_verdict,
+        }
 
     return app

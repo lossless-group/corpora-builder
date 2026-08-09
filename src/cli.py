@@ -169,9 +169,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     console.print(f"[green]corpora[/] · {label}")
     console.print(f"  [bold]http://{args.host}:{args.port}[/]\n")
-    console.print("[dim]  read-only — no handler in this server writes[/]\n")
+    if args.writable:
+        console.print("[yellow]  WRITABLE — capture is enabled against this target[/]\n")
+    else:
+        console.print("[dim]  read-only — pass --writable to enable capture[/]\n")
 
-    uvicorn.run(create_app(store, label), host=args.host, port=args.port, log_level="warning")
+    uvicorn.run(
+        create_app(store, label, writable=args.writable),
+        host=args.host,
+        port=args.port,
+        log_level="warning",
+    )
     return 0
 
 
@@ -199,6 +207,11 @@ def main(argv: list[str] | None = None) -> int:
     serve = sub.add_parser("serve", help="open the browse UI")
     serve.add_argument("--port", type=int, default=8787)
     serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument(
+        "--writable",
+        action="store_true",
+        help="enable capture from the UI (off by default — the first target was a client corpus)",
+    )
     serve.set_defaults(func=cmd_serve)
 
     show = sub.add_parser("show", help="print one source file")
