@@ -1,0 +1,141 @@
+"""Tests for the browse surface — spec: context-v/specs/Browse-Corpus.md.
+
+Against the pure functions in `src.server.browse`, not a running server. The
+behaviour worth protecting is what the screen shows, and that is decided here.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from src.server.browse import list_sources, load_source
+from src.store import LocalFsStore
+
+
+def _source(title: str, fetched: str, excerpt: str = "", status: str = "candidate") -> bytes:
+    return (
+        f"---\n"
+        f"url: https://example.org/{title.lower().replace(' ', '-')}\n"
+        f"title: {title}\n"
+        f"fetched_at: '{fetched}'\n"
+        f"status: {status}\n"
+        f"published_at: '2025-03-01'\n"
+        f"excerpt: {excerpt or 'An excerpt.'}\n"
+        f"---\n\nbody\n"
+    ).encode()
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> LocalFsStore:
+    s = LocalFsStore(tmp_path)
+    s.write(
+        "live/thesis/ocean/sources/2026-08-01_alpha.md", _source("Alpha", "2026-08-01T00:00:00Z")
+    )
+    s.write(
+        "live/thesis/ocean/sources/2026-08-03_beta.md",
+        _source("Beta", "2026-08-03T00:00:00Z", excerpt="Mentions DESALINATION here."),
+    )
+    s.write(
+        "live/topic/solar/sources/2026-08-02_gamma.md", _source("Gamma", "2026-08-02T00:00:00Z")
+    )
+    return s
+
+
+@pytest.mark.spec("BROWSE-01")
+def test_listing_carries_the_display_fields(store: LocalFsStore) -> None:
+    listing = list_sources(store)
+
+    row = next(r for r in listing.rows if r.title == "Alpha")
+    assert row.path.endswith("2026-08-01_alpha.md")
+    assert row.status == "candidate"
+    assert row.content_pulled is False
+    assert row.published_at == "2025-03-01"
+    assert row.excerpt
+    assert row.domain == "thesis/ocean"
+    assert listing.total == 3
+
+
+@pytest.mark.spec("BROWSE-02")
+def test_listing_filters_by_domain_prefix(store: LocalFsStore) -> None:
+    listing = list_sources(store, prefix="live/thesis/ocean/")
+
+    assert {r.title for r in listing.rows} == {"Alpha", "Beta"}
+
+
+@pytest.mark.spec("BROWSE-03")
+def test_a_damaged_file_appears_with_its_error(store: LocalFsStore) -> None:
+    """13 sources once vanished from a count. A tidy-looking listing is worse."""
+    store.write(
+        "live/thesis/ocean/sources/2026-08-04_broken.md",
+        b"---\nurl: https://example.org/x\n---\ntitle: Stranded\npublisher: Someone\n",
+    )
+
+    listing = list_sources(store)
+
+    broken = next(r for r in listing.rows if "broken" in r.path)
+    assert "StrandedContent" in broken.error
+    assert listing.total == 4
+
+
+@pytest.mark.spec("BROWSE-04")
+def test_search_matches_title_and_excerpt_case_insensitively(store: LocalFsStore) -> None:
+    by_title = list_sources(store, search="alpha")
+    by_excerpt = list_sources(store, search="desalination")
+
+    assert [r.title for r in by_title.rows] == ["Alpha"]
+    assert [r.title for r in by_excerpt.rows] == ["Beta"]
+
+
+@pytest.mark.spec("BROWSE-05")
+def test_listing_is_newest_fetch_first(store: LocalFsStore) -> None:
+    listing = list_sources(store)
+
+    assert [r.title for r in listing.rows] == ["Beta", "Gamma", "Alpha"]
+
+
+@pytest.mark.spec("BROWSE-06")
+def test_loading_one_source_returns_it_unmodified(store: LocalFsStore) -> None:
+    path = "live/thesis/ocean/sources/2026-08-01_alpha.md"
+
+    assert load_source(store, path).encode() == store.read(path)
+
+
+@pytest.mark.spec("BROWSE-07")
+def test_a_traversing_path_is_refused(store: LocalFsStore) -> None:
+    for bad in ("../../etc/passwd", "/etc/passwd", "live/../../secrets"):
+        with pytest.raises(ValueError):
+            load_source(store, bad)
+
+
+@pytest.mark.spec("BROWSE-08")
+def test_excerpt_falls_back_to_body_prose(store: LocalFsStore) -> None:
+    """reach-edu's 845 files predate the excerpt field entirely."""
+    store.write(
+        "live/thesis/ocean/sources/2026-08-05_delta.md",
+        b"---\nurl: https://example.org/d\ntitle: Delta\n"
+        b"fetched_at: '2026-08-05T00:00:00Z'\n---\n\n"
+        b"[Skip to content](https://x.com)\n\n*   [Nav](https://x.com)\n\n"
+        b"The substantive opening sentence of the article, which is what a "
+        b"reader actually wants to see on a card.\n",
+    )
+
+    row = next(r for r in list_sources(store).rows if r.title == "Delta")
+
+    assert row.excerpt.startswith("The substantive opening sentence")
+    assert "Skip to content" not in row.excerpt
+
+
+@pytest.mark.spec("BROWSE-09")
+def test_domain_handles_both_corpus_layouts(store: LocalFsStore) -> None:
+    """corpora-builder writes live/<type>/<slug>/sources/; reach-edu predates it."""
+    store.write("funders/annie-e-casey/2026-08-06_a.md", _source("A", "2026-08-06T00:00:00Z"))
+    store.write(
+        "strategies/workforce/sources/2026-08-07_b.md", _source("B", "2026-08-07T00:00:00Z")
+    )
+
+    domains = {r.title: r.domain for r in list_sources(store).rows}
+
+    assert domains["A"] == "funders/annie-e-casey"
+    assert domains["B"] == "strategies/workforce"

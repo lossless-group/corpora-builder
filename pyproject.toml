@@ -5,11 +5,13 @@ description = "Build corpora deliberately — capture, triage, fetch, file, and 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "boto3>=1.34.0",           # S3 API against Cloudflare R2 (the SUBSTRATE decision)
-    "httpx>=0.27.0",           # fetching sources
+    "boto3>=1.34.0", # S3 API against Cloudflare R2 (the SUBSTRATE decision)
+    "fastapi>=0.141.1",
+    "httpx>=0.27.0", # fetching sources
     "python-frontmatter>=1.1", # markdown + YAML frontmatter, the files-are-truth layer
-    "pyyaml>=6.0",             # frontmatter's serializer, pinned explicitly
-    "rich>=13.0.0",            # terminal output — matches memopop-orchestrator
+    "pyyaml>=6.0", # frontmatter's serializer, pinned explicitly
+    "rich>=13.0.0", # terminal output — matches memopop-orchestrator
+    "uvicorn[standard]>=0.52.1",
 ]
 
 [project.scripts]

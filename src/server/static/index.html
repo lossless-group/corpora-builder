@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>corpora — browse</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;      --panel: #fff;    --ink: #1b1b19;   --dim: #6b6b66;
+    --line: #e4e4e0;    --accent: #2f6f5e; --warn: #b23c17;  --chip: #eef1ef;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141513;    --panel: #1c1e1b; --ink: #e9e9e4;   --dim: #9a9a92;
+      --line: #2b2e2a;  --accent: #6fd0ac; --warn: #ff8a5c;  --chip: #242723;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    border-bottom: 1px solid var(--line); padding: 14px 20px;
+  }
+  .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  h1 { font-size: 15px; margin: 0; font-weight: 620; letter-spacing: -.01em; }
+  h1 span { color: var(--dim); font-weight: 420; }
+  input, select {
+    font: inherit; padding: 7px 10px; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #q { flex: 1; min-width: 220px; }
+  main { padding: 18px 20px 60px; max-width: 1100px; }
+  .count { color: var(--dim); font-size: 13px; margin: 0 0 12px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  li {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 13px 15px; box-shadow: var(--shadow); cursor: pointer;
+  }
+  li:hover { border-color: var(--accent); }
+  .t { font-weight: 580; margin-bottom: 3px; letter-spacing: -.005em; }
+  .x { color: var(--dim); font-size: 13px; margin-bottom: 6px; }
+  .e { color: var(--dim); font-size: 13.5px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    font-size: 11.5px; padding: 2px 8px; border-radius: 100px;
+    background: var(--chip); color: var(--dim); white-space: nowrap;
+  }
+  .chip.on { background: var(--accent); color: var(--bg); }
+  .err { border-color: var(--warn); }
+  .err .t { color: var(--warn); }
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    color: var(--ink); max-width: min(860px, 92vw); width: 100%; padding: 0;
+  }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog header { border-bottom: 1px solid var(--line); position: static; }
+  dialog pre {
+    margin: 0; padding: 18px 20px; overflow-x: auto; font-size: 13px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap;
+    word-break: break-word; max-height: 68vh;
+  }
+  button {
+    font: inherit; padding: 6px 12px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  }
+  .empty { color: var(--dim); padding: 40px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <h1>corpora <span id="label"></span></h1>
+    <input id="q" type="search" placeholder="Search title, excerpt, or path…" autocomplete="off">
+    <select id="domain"><option value="">All domains</option></select>
+  </div>
+</header>
+
+<main>
+  <p class="count" id="count">Loading…</p>
+  <ul id="rows"></ul>
+</main>
+
+<dialog id="viewer">
+  <header class="bar">
+    <h1 id="vtitle" style="flex:1"></h1>
+    <button onclick="viewer.close()">Close</button>
+  </header>
+  <pre id="vbody"></pre>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let timer;
+
+async function meta() {
+  const m = await (await fetch('/api/meta')).json();
+  $('label').textContent = '· ' + m.label;
+  for (const d of m.domains) {
+    const o = document.createElement('option');
+    o.value = d.startsWith('(') ? '' : `live/${d}/`;
+    o.textContent = d;
+    $('domain').append(o);
+  }
+}
+
+function card(r) {
+  const li = document.createElement('li');
+  if (r.error) li.className = 'err';
+  const chips = [];
+  if (r.error) chips.push(['error', 1]);
+  else {
+    chips.push([r.status, r.status === 'promoted']);
+    chips.push([r.content_pulled ? 'body pulled' : 'metadata only', 0]);
+    if (r.published_at) chips.push(['pub ' + r.published_at, 0]);
+  }
+  chips.push([r.domain, 0]);
+
+  li.innerHTML = `
+    <div class="t"></div>
+    <div class="x"></div>
+    <div class="e"></div>
+    <div class="chips">${chips.map(([c, on]) =>
+      `<span class="chip${on ? ' on' : ''}"></span>`).join('')}</div>`;
+  li.querySelector('.t').textContent = r.title || '(untitled)';
+  li.querySelector('.x').textContent = r.error || r.url || r.path;
+  li.querySelector('.e').textContent = r.excerpt || '';
+  li.querySelectorAll('.chip').forEach((el, i) => el.textContent = chips[i][0]);
+  li.onclick = () => open(r);
+  return li;
+}
+
+async function open(r) {
+  $('vtitle').textContent = r.title || r.path;
+  $('vbody').textContent = 'Loading…';
+  viewer.showModal();
+  const res = await fetch('/api/source?path=' + encodeURIComponent(r.path));
+  $('vbody').textContent = res.ok ? await res.text() : 'Could not load: ' + res.status;
+}
+
+async function load() {
+  const p = new URLSearchParams({ prefix: $('domain').value, search: $('q').value });
+  const d = await (await fetch('/api/sources?' + p)).json();
+  $('count').textContent = `${d.total} source${d.total === 1 ? '' : 's'}` +
+    (d.rows.length < d.total ? ` · showing ${d.rows.length}` : '');
+  $('rows').replaceChildren(...d.rows.map(card));
+  if (!d.rows.length) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'Nothing matches.';
+    $('rows').replaceChildren(li);
+  }
+}
+
+$('q').oninput = () => { clearTimeout(timer); timer = setTimeout(load, 160); };
+$('domain').onchange = load;
+meta().then(load);
+</script>
+</body>
+</html>

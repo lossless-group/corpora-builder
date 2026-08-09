@@ -159,6 +159,22 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from src.server.app import create_app
+
+    store, workspace = build_store(load_env(), args.local)
+    label = args.local or f"{workspace.display_name} ({workspace.bucket})"
+
+    console.print(f"[green]corpora[/] · {label}")
+    console.print(f"  [bold]http://{args.host}:{args.port}[/]\n")
+    console.print("[dim]  read-only — no handler in this server writes[/]\n")
+
+    uvicorn.run(create_app(store, label), host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corpora", description="Build corpora deliberately.")
     parser.add_argument("--local", default="", help="use a local directory instead of R2")
@@ -179,6 +195,11 @@ def main(argv: list[str] | None = None) -> int:
     ls.add_argument("prefix", nargs="?", default="live/")
     ls.add_argument("--limit", type=int, default=50)
     ls.set_defaults(func=cmd_ls)
+
+    serve = sub.add_parser("serve", help="open the browse UI")
+    serve.add_argument("--port", type=int, default=8787)
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.set_defaults(func=cmd_serve)
 
     show = sub.add_parser("show", help="print one source file")
     show.add_argument("path")
