@@ -5,3 +5,24 @@ dist/
 .env.*
 !.env.example
 *.log
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# The ledger's derived output — regenerated on every pytest run, never committed.
+# Committing it would let a stale file answer "is the spec green?" after the
+# code moved on, which is the exact drift the ledger exists to prevent.
+.spec-results.json
+
+# context-vigilance: scratch and out-of-band material is gitignored by convention
+context-v/extra/
+
+# Local corpus mirrors — reconstituted from R2 via rclone, never source of truth
+.corpus-cache/
