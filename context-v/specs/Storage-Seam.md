@@ -21,6 +21,7 @@ site_uuid: 9761a313-bc42-4cef-a20c-7e98a2bb0a9b
 hex_code: y3v71z
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Storage Seam

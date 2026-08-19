@@ -19,6 +19,7 @@ site_uuid: b6710e3f-8f2f-47c6-88ea-f979d48d8774
 hex_code: ie25v6
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Capture From The Screen

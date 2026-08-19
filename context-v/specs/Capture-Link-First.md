@@ -20,6 +20,7 @@ site_uuid: 4ac181d0-c29e-49ed-8582-0b190e223822
 hex_code: ryzqdt
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Capture, Link-First

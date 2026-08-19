@@ -19,6 +19,7 @@ site_uuid: 7555f597-c1d0-4328-802e-ff9f8f5ea077
 hex_code: 8yazdc
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Loop Harness

@@ -20,6 +20,7 @@ site_uuid: 3198ebde-726a-4eb4-8275-18f9805ffc99
 hex_code: w7ug39
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Source-File Model

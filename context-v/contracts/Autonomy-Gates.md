@@ -19,6 +19,7 @@ site_uuid: b09e691d-8da5-49c2-bc66-4c2f3a29ea1d
 hex_code: ypi2ps
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Autonomy Gates

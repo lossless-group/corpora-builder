@@ -23,6 +23,7 @@ site_uuid: f3010b91-2384-4bf5-a070-f8815de71022
 hex_code: 3jpnpl
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
+publish: true
 ---
 
 # Spec to Shipped with TDD
