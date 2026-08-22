@@ -9,8 +9,8 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.1
-status: Draft
+semantic_version: 0.0.0.2
+status: Signed-Off
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]] — Phase 2"
 tags:
   - Spec
@@ -178,20 +178,38 @@ a client understand what we did for them last month?* If the answer is no, the
 spec passed and the feature failed, and the fix is likely in how sentences get
 written rather than in this code.
 
-## Open questions
+## Open questions — resolved by default, 2026-08-22
 
-1. **What is the unit a client cares about — a commit, or a week?** This spec
-   emits one record per change. A client may want "here is August," which is a
-   grouping concern on top. Deliberately not solved here; the record supports it.
-2. **Does a client see `_discarded/` and `inbox/`?** Both are real directories in
-   the corpus and both are arguably internal. The prefix scoping makes excluding
-   them trivial, but *whether* to is a client-relationship question, not a
-   technical one.
-3. **What happens to changes made before the feed existed?** History reaches back
-   further than the intention to show it to anyone. Some early subjects are
-   developer-shaped (`chore(reach-edu): commit corpus, inputs and generated
-   outputs`). Behaviour 5 means they render without a reason, which is correct
-   but may look sparse. A start-date floor is the obvious lever if it matters.
+Signed off by the operator with the observation that makes these answerable:
+
+> The questions you have seem real but the reality is it is all kind of arbitrary
+> because we only have corpora for two clients and neither of them have used it on
+> their own, only me. I would imagine **any kind of record of activity is better
+> than nothing.**
+
+That is right, and it sorts the questions into one that is expensive to be wrong
+about and three that are not. **Only the record shape and the `ChangeSource` seam
+are costly to change later** — everything else is a filter or a renderer tweak,
+measured in hours. So the three below take defaults now rather than waiting for
+users who do not exist yet.
+
+1. **Unit — a commit, or a week?** *Default: per change.* Grouping is a renderer
+   concern and the record supports it. Revisit when someone says a day of commits
+   reads as noise.
+2. **Does a client see `inbox/` and `_discarded/`?** *Default: `inbox/` yes,
+   `_discarded/` no.* Inbox activity is evidence of gathering, which is exactly
+   the invisible work this feed exists to surface. `_discarded/` is material we
+   threw away, and showing a client the reject pile invites a conversation nobody
+   wants. Both are one prefix filter to flip.
+3. **History from before the feed existed?** *Default: no floor — show all of
+   it.* Early subjects are developer-shaped and will render without a reason line
+   per Behaviour 5. That is honest, and the sparseness is itself information about
+   when the discipline started.
+
+**The one that stays open, because it is the expensive one:** whether the
+`Change` field set survives contact with a second engine. `FEED-14` is the test
+that answers it, and it cannot be fully answered until a `KopiaChangeSource`
+exists. Until then the seam is a bet, not a proof.
 
 ## Related
 
