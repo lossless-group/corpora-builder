@@ -1,0 +1,216 @@
+---
+title: "Binary Ingest and the bin/ Store — one copy, optimized, fetched on demand"
+lede: "78 files are 90.5% of the corpus bytes. Compress once, store once by hash, fetch when asked, delete locally without fear."
+date_created: 2026-08-22
+date_modified: 2026-08-22
+date_authored_initial_draft: 2026-08-22
+date_authored_current_draft: 2026-08-22
+authors:
+  - Michael Staton
+augmented_with:
+  - Claude Code on Claude Opus 5 (1M context)
+semantic_version: 0.0.0.1
+status: Draft
+spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]]"
+tags:
+  - Spec
+  - Corpora-Builder
+  - Binary-Assets
+  - Content-Addressed-Storage
+  - PDF
+site_uuid: b45d5098-b08d-4fff-ac61-b5648622f24e
+hex_code: mmz3kp
+publish: true
+---
+
+# Binary Ingest and the `bin/` Store
+
+## Why Care?
+
+The reach-edu corpus is **1,715 text files and 78 binaries**, and the binaries
+are **90.5% of the bytes** — 282 MB against 30 MB. That ratio causes every
+storage problem this project has:
+
+- It is why the repo needs **Git LFS**, which is why **jj corrupted it** on
+  2026-08-22 (jj runs no smudge/clean filters; one save rewrote 78 pointers into
+  282 MB of real bytes).
+- It is why **half the bytes are duplicated** — `corpus/` and
+  `2026-07-28_corpus/` hold the same 34 PDFs, byte-identical, because a snapshot
+  was the only way to share work before the R2 mirror existed.
+- It is why a four-year-old MacBook Air is a constraint at all.
+
+And almost none of those bytes are earning their place. **The Bloomberg annual
+report is 38 MB**; at Ghostscript `/ebook` it is **9.1 MB with its text layer
+byte-for-byte intact**. Publishers have no incentive to optimize; we pay for it
+forever, in every copy.
+
+Three moves fix all of it, and they compose:
+
+| | Result |
+|---|---|
+| Optimize on ingest | 282 MB → ~70 MB |
+| Store once by content hash | → ~35 MB (the duplicates collapse) |
+| Fetch on demand | → **~0 MB baseline** |
+
+**The deeper reason, though, is not storage.** Under content addressing a binary
+**cannot conflict** — a changed PDF is a different hash, therefore a different
+object, and two people can never disagree about `bin/3f/3f2a….pdf`. That
+collapses the entire multi-writer conflict problem onto text, which is the only
+place merge actually works. The text/binary split is architecture, not a
+size optimization.
+
+## Scope
+
+**In:** PDF optimization at capture with a text-layer invariant; the
+`bin/<ab>/<sha256><ext>` content-addressed store; the frontmatter join carrying
+both hashes; `fetch` / `evict` / `verify` verbs; the migration for the 78
+existing binaries.
+
+**Out:**
+
+- **Non-PDF optimization.** `docx`/`pptx`/`xlsx` are reserved in `.gitattributes`
+  but none exist yet. They go in `bin/` unoptimized until one shows up.
+- **Removing LFS or introducing jj.** Consequences of this spec, not part of it.
+  Sequenced in the plan.
+- **The client-facing download UI.** This spec defines the *states* a surface
+  renders; Phase 3 builds the surface.
+- **Any change to text handling.** Markdown, JSON and YAML are untouched.
+
+## Behaviour
+
+1. **The key is the content hash.** A binary is stored at
+   `bin/<first-two-hex>/<sha256><ext>` — the same two-hex fan-out as `restic`,
+   `Kopia`, and the parked HISTORY design. Identical content stored twice
+   produces one object, with no dedup logic.
+
+2. **Optimization happens once, at ingest, before hashing.** What is stored is
+   the optimized artifact, so its hash addresses what you will actually retrieve.
+   Ghostscript `/ebook` (150 DPI) is the default: measured at **24% of original**
+   on the real corpus, still sharp full-screen. `/screen` is 72 DPI and too soft
+   for desktop reading.
+
+3. **The text layer is an invariant, not a hope.** Extract text before and after.
+   If the post-optimization text length falls below **98%** of the original, the
+   optimization is **rejected** and the original bytes are stored. A corpus
+   grounds factual claims; an optimization that costs extraction is not a
+   saving.
+
+4. **A scanned PDF is never optimized.** If the original yields fewer than
+   **200 characters** of extractable text, the images *are* the content and
+   downsampling destroys it. Store the original.
+
+5. **Optimization never loses provenance.** The wrapper records the *original*
+   alongside the stored one:
+
+   | field | meaning |
+   |---|---|
+   | `binary_key` | `bin/3f/3f2a….pdf` — what is stored, what you can fetch |
+   | `binary_sha256` / `binary_bytes` | the stored (possibly optimized) artifact |
+   | `source_sha256` / `source_bytes` | **what the publisher actually served** |
+   | `optimized` | `true` when the two differ, `false` when stored verbatim |
+
+   Without `source_sha256`, "here is the source" points at something we altered
+   and cannot prove was faithful. This extends the existing `BinaryAsset`
+   (`src/model/source.py:112`), which already carries `sha256` and `bytes`.
+
+6. **`bin/` is written once and never rewritten.** No re-compression, no
+   re-packing, no zipping. An object at a hash key is immutable by construction,
+   so any process that touches it again is a bug.
+
+7. **Verification never downloads.** `CorpusStore.stat()` returns size and
+   content hash; a binary is verified present-and-intact by comparing that
+   against the wrapper. Walking 78 binaries costs 78 `stat` calls and no bytes.
+
+8. **Absent is a first-class state, not an error.** A binary that is referenced
+   but not local reports **`not_downloaded`** with everything needed to get it —
+   key, size, and where it lives. It does not raise, and it does not silently
+   fetch. *(Operator decision, 2026-08-22: "Fail with a clear 'not downloaded,
+   click to get'.")*
+
+9. **Eviction is safe by construction, and checked anyway.** `evict` deletes a
+   local copy only after confirming the remote holds the same hash — the
+   `numcopies` rule from [[Profile__Git-Annex]], whose unsafe-drop message is the
+   whole safety model in one paragraph. Refuses, with a reason, when it cannot
+   verify.
+
+10. **Missing binaries never degrade retrieval.** Every binary has a wrapper
+    `.md` carrying its extracted text and metadata, and that is what agents and
+    Chroma read. A binary is the **human-verifiable original**, so absence costs
+    a human a click and costs an agent nothing.
+
+11. **Migration is additive and reversible.** Existing binaries are hashed into
+    `bin/` and their wrappers updated. **Originals are not deleted by this spec.**
+    Removing them is a separate, explicitly-confirmed step, per the RED-list rule
+    on deleting corpus content.
+
+## Tests
+
+| ID | Given / When / Then |
+|---|---|
+| `BIN-01` | Given bytes and an extension, when a key is derived, then it is `bin/<first-two-of-sha256>/<sha256><ext>` and is stable across calls |
+| `BIN-02` | Given the same bytes ingested twice under different filenames, when both are stored, then one object exists and both wrappers reference the same key |
+| `BIN-03` | Given a text-bearing PDF, when it is ingested with optimization enabled, then the stored bytes are smaller than the source and the wrapper records `optimized: true` |
+| `BIN-04` | Given a text-bearing PDF, when it is optimized, then extracted text length is at least 98% of the original's |
+| `BIN-05` | Given a PDF whose optimization would drop text below the threshold, when it is ingested, then the **original** bytes are stored and `optimized` is `false` |
+| `BIN-06` | Given a scanned PDF yielding under 200 characters, when it is ingested, then optimization is skipped and the original is stored |
+| `BIN-07` | Given an optimized ingest, when the wrapper is read, then `source_sha256` and `source_bytes` describe the publisher's file and differ from `binary_sha256`/`binary_bytes` |
+| `BIN-08` | Given a verbatim ingest, when the wrapper is read, then `source_sha256` equals `binary_sha256` and `optimized` is `false` |
+| `BIN-09` | Given a stored binary, when it is verified, then the check uses `stat` only and reads no object bytes |
+| `BIN-10` | Given a wrapper whose `binary_key` is absent from the store, when it is verified, then the result reports `missing` for that key rather than raising |
+| `BIN-11` | Given a stored binary whose bytes have been altered, when it is verified, then the result reports a hash mismatch rather than passing |
+| `BIN-12` | Given a binary present remotely but not locally, when its status is read, then it reports `not_downloaded` carrying key and size, and nothing is fetched |
+| `BIN-13` | Given a `not_downloaded` binary, when it is fetched, then it becomes present locally and its sha256 matches `binary_sha256` |
+| `BIN-14` | Given a local binary whose hash is confirmed present remotely, when it is evicted, then the local copy is gone, the wrapper is unchanged, and a later fetch restores identical bytes |
+| `BIN-15` | Given a local binary that cannot be confirmed remotely, when eviction is attempted, then it is refused with a stated reason and the local copy survives |
+| `BIN-16` | Given a corpus of existing binary siblings, when migration runs, then every binary has a `bin/` object and an updated wrapper, and **no original file is deleted** |
+| `BIN-17` | Given migration has already run, when it runs again, then no object is rewritten and no wrapper changes — it is idempotent |
+| `BIN-18` | Given the conformance checks above, when they run against `LocalFsStore` and an in-memory store in turn, then all pass against both with no implementation-specific branching in the test bodies |
+
+**Not in the automated suite, run deliberately:**
+
+- **The real 78.** Migration against `augment-it/clients/reach-edu/corpus`,
+  gated behind a path env var. What it proves is not correctness but the
+  numbers: how much the corpus actually shrinks, how many duplicates collapse,
+  and whether any PDF trips the text-layer guard. **Read-only on the source; all
+  writes to a dev prefix.**
+- **Eyes on three optimized PDFs.** Open the Bloomberg report, a chart-heavy WEF
+  report, and one scan-like document at full screen. The invariant proves text
+  survived; only a human can say the images still look right.
+
+## Acceptance
+
+```
+uv run python scripts/spec_status.py --spec Binary-Ingest-And-Bin-Store --require-green
+```
+
+exits 0, `bash scripts/check.sh` passes its blocking rungs, both deliberate runs
+above have been done, and the operator has walked it (Gate 4).
+
+**The walk-through question:** *would you send an optimized PDF to a client as
+the source you cited?* If not, the threshold is wrong, and the fix is in the
+setting rather than in the code.
+
+## Open questions
+
+1. **Does `bin/` live inside the repo or only in R2?** Inside is simpler and
+   makes git carry the bytes again — the thing this spec exists to stop. Only-R2
+   is right, but it means a fresh clone has no binaries until fetched, which is
+   a real change in how the corpus feels. **Leaning only-R2**, since Behaviour 10
+   means nothing breaks.
+2. **What is `numcopies` here, concretely?** Behaviour 9 says "confirm the remote
+   has it." With one bucket that is one copy, and a bucket is not a backup.
+   Whether R2 alone is enough to justify local deletion is a durability judgment,
+   not a code question.
+3. **Ghostscript as a dependency.** `gs` is a system binary, not a Python
+   package, so the Phase 7 packaging story has to carry it. Named so its absence
+   from `pyproject.toml` is a decision rather than an oversight.
+
+## Related
+
+- [[../loops/Spec-to-Shipped-With-TDD]] — the loop this runs through
+- [[../contracts/Autonomy-Gates]] — the RED-list rule behind Behaviour 11
+- [[Storage-Seam]] — `CorpusStore.stat()`, which Behaviour 7 relies on
+- [[Source-File-Model]] — `BinaryAsset`, which Behaviour 5 extends
+- [[Corpus-Change-Feed]] — the sibling read-only surface, and the same seam argument
+- `ai-labs/studies/sync-and-content-version-control/context-v/profiles/Profile__Git-Annex.md` — `numcopies`, and why safe deletion needs bookkeeping
+- `ai-labs/context-v/reminders/Never-Run-JJ-In-A-Git-LFS-Repo.md` — the incident that made binaries the hard part
