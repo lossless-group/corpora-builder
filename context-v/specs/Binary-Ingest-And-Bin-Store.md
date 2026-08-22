@@ -9,7 +9,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.1
+semantic_version: 0.0.0.2
 status: Draft
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]]"
 tags:
@@ -165,6 +165,8 @@ existing binaries.
 | `BIN-16` | Given a corpus of existing binary siblings, when migration runs, then every binary has a `bin/` object and an updated wrapper, and **no original file is deleted** |
 | `BIN-17` | Given migration has already run, when it runs again, then no object is rewritten and no wrapper changes — it is idempotent |
 | `BIN-18` | Given the conformance checks above, when they run against `LocalFsStore` and an in-memory store in turn, then all pass against both with no implementation-specific branching in the test bodies |
+| `BIN-19` | Given the same binary referenced by wrappers in two different corpora, when it is fetched for the second corpus, then the local cache serves it and no remote read occurs |
+| `BIN-20` | Given a cached binary, when the cache is cleared, then no wrapper changes, the remote object is untouched, and a later fetch restores identical bytes |
 
 **Not in the automated suite, run deliberately:**
 
@@ -192,11 +194,47 @@ setting rather than in the code.
 
 ## Open questions
 
-1. **Does `bin/` live inside the repo or only in R2?** Inside is simpler and
-   makes git carry the bytes again — the thing this spec exists to stop. Only-R2
-   is right, but it means a fresh clone has no binaries until fetched, which is
-   a real change in how the corpus feels. **Leaning only-R2**, since Behaviour 10
-   means nothing breaks.
+1. ~~**Does `bin/` live inside the repo or only in R2?**~~ **Resolved
+   2026-08-22: neither — two scopes, one key.**
+
+   | | location | scope |
+   |---|---|---|
+   | **remote** | `r2://<client-bucket>/corpora/bin/<ab>/<sha256><ext>` | **per client, isolated** |
+   | **local cache** | `~/Library/Caches/corpora/bin/<ab>/<sha256><ext>` (XDG on Linux) | **per machine, shared across every corpus** |
+
+   `bin/` is **never in a repo.** That is what keeps git at ~30 MB, makes LFS
+   unnecessary, and makes jj safe.
+
+   **The remote is deliberately not shared across clients**, even though content
+   addressing would dedup it for free. The key is `sha256(content)` and leaks
+   nothing about a machine or a person — but two wrappers naming the same hash
+   reveal that two corpora hold the same document, and a shared remote would
+   dissolve the bucket-per-client isolation the tenancy design makes structural.
+   Duplicating a 9 MB optimized report across two buckets costs fractions of a
+   cent; the isolation is worth vastly more.
+
+   **The local cache is shared, and that is where "don't download it twice"
+   comes from.** Both wrappers name the same hash, the machine holds one copy
+   keyed by it, and `fetch` finds it already present. Fetched once, used by every
+   corpus — precisely *because* the remote copies are separate objects that
+   happen to share a name.
+
+   Two consequences worth stating:
+
+   - **Eviction becomes cache eviction, which is non-destructive by definition.**
+     Clearing a cache cannot lose data, which is a stronger guarantee than
+     Behaviour 9's `numcopies` check and needs no bookkeeping at all. Behaviour 9
+     still governs deleting a *remote* object; nothing in this spec does that.
+   - The MacBook Air constraint becomes **one cache size budget**, not a
+     per-corpus decision.
+
+   [[Storage-Seam]] anticipated this: *"Cache eviction. `CachedStore` has none in
+   this phase… Noted so its absence is a decision, not an oversight."* This is
+   when it is needed. `CachedStore` is in-memory today
+   (`src/store/cached.py:24`); the disk-backed, machine-level version is a new
+   implementation of the same seam, and its own docstring already argues it is
+   correct by construction — *"an object named by its own sha256 can never
+   change, so a cache keyed on it never needs invalidating."*
 2. **What is `numcopies` here, concretely?** Behaviour 9 says "confirm the remote
    has it." With one bucket that is one copy, and a bucket is not a backup.
    Whether R2 alone is enough to justify local deletion is a durability judgment,
