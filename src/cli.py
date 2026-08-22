@@ -149,6 +149,33 @@ def cmd_ls(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_changes(args: argparse.Namespace) -> int:
+    """`corpora changes` — what changed in a corpus, and why.
+
+    Reads a `ChangeSource` rather than git directly, so the engine behind this
+    can be swapped without touching the surface. See
+    `context-v/specs/Corpus-Change-Feed.md`.
+    """
+    from src.feed.git_source import GitChangeSource, GitRepoError
+    from src.feed.render import render_prose, to_json
+
+    try:
+        source = GitChangeSource(args.repo)
+    except GitRepoError as err:
+        console.print(f"[red]{err}[/]")
+        return 1
+
+    page = source.changes(prefix=args.prefix, limit=args.limit)
+
+    if args.json:
+        print(to_json(page))
+    else:
+        # Printed raw, not through rich: the renderer already returns finished
+        # plain text, and rich soft-wraps long corpus paths mid-token.
+        print(render_prose(page, max_paths=args.max_paths))
+    return 0
+
+
 def cmd_show(args: argparse.Namespace) -> int:
     store, _ = build_store(load_env(), args.local)
     try:
@@ -213,6 +240,14 @@ def main(argv: list[str] | None = None) -> int:
         help="enable capture from the UI (off by default — the first target was a client corpus)",
     )
     serve.set_defaults(func=cmd_serve)
+
+    changes = sub.add_parser("changes", help="what changed in the corpus, and why")
+    changes.add_argument("--repo", default=".", help="git repository holding the corpus")
+    changes.add_argument("--prefix", default="", help="corpus path within the repo")
+    changes.add_argument("--limit", type=int, default=10)
+    changes.add_argument("--max-paths", type=int, default=5, dest="max_paths")
+    changes.add_argument("--json", action="store_true", help="machine shape instead of prose")
+    changes.set_defaults(func=cmd_changes)
 
     show = sub.add_parser("show", help="print one source file")
     show.add_argument("path")

@@ -9,7 +9,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.2
+semantic_version: 0.0.0.3
 status: Signed-Off
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]] — Phase 2"
 tags:
@@ -196,11 +196,13 @@ users who do not exist yet.
 1. **Unit — a commit, or a week?** *Default: per change.* Grouping is a renderer
    concern and the record supports it. Revisit when someone says a day of commits
    reads as noise.
-2. **Does a client see `inbox/` and `_discarded/`?** *Default: `inbox/` yes,
-   `_discarded/` no.* Inbox activity is evidence of gathering, which is exactly
-   the invisible work this feed exists to surface. `_discarded/` is material we
-   threw away, and showing a client the reject pile invites a conversation nobody
-   wants. Both are one prefix filter to flip.
+2. **Does a client see `inbox/` and `_discarded/`?** *Resolved: **both, no
+   exclusions**.* The first draft proposed hiding `_discarded/` on the grounds
+   that a reject pile invites an awkward conversation. **The operator overruled
+   it, and was right:** *"discarded shows work too (it takes a lot of time to go
+   through everything)."* Deciding a source does not belong **is** labour, and it
+   is precisely the invisible labour this feed exists to surface. Hiding it would
+   under-report the work. No filter — the feed shows the whole corpus prefix.
 3. **History from before the feed existed?** *Default: no floor — show all of
    it.* Early subjects are developer-shaped and will render without a reason line
    per Behaviour 5. That is honest, and the sparseness is itself information about
