@@ -36,8 +36,21 @@ class LocalFsStore(CorpusStore):
         return self._path(key).is_file()
 
     def stat(self, key: str) -> ObjectStat:
-        data = self.read(key)
-        return ObjectStat(size=len(data), content_hash=hashlib.sha256(data).hexdigest())
+        # Streamed rather than routed through `read`, for two reasons. Size comes
+        # from the filesystem instead of from `len()` on bytes we had to
+        # materialise; and `stat` stops being an object *read* at the seam level,
+        # which is what lets `BinStore.verify` promise it never downloads
+        # (`Corpus-Binary` Behaviour 7). `R2Store.stat` already keeps that promise
+        # via HeadObject plus the sha256 it writes into object metadata; this
+        # makes the local implementation honest about the same contract.
+        path = self._path(key)
+        if not path.is_file():
+            raise KeyNotFound(key)
+        digest = hashlib.sha256()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return ObjectStat(size=path.stat().st_size, content_hash=digest.hexdigest())
 
     def list(self, prefix: str = "") -> list[str]:
         if not self.root.is_dir():
