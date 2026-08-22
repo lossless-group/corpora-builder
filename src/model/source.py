@@ -110,10 +110,20 @@ VALID_DOWNLOAD_STATUS = (
 
 @dataclass
 class BinaryAsset:
-    """A PDF or other binary riding alongside its markdown.
+    """The markdown's pointer to its binary, which lives in `bin/`.
 
     Present even on failure: `download_status` distinguishes "we never tried"
     from "we tried and it 403'd", which the absence of a block cannot.
+
+    **Amended 2026-08-22.** `filename` used to name a sibling sitting beside this
+    markdown. Binaries now live once in the content-addressed `bin/` store
+    (`Binary-Ingest-And-Bin-Store.md`), so `binary_key` is the real address and
+    `filename` survives only as a human-readable label.
+
+    Two digests on purpose. `sha256` addresses what you can fetch;
+    `source_sha256` records what the publisher served. They differ whenever
+    `optimized` is true, and keeping only one loses either retrievability or
+    citability.
     """
 
     filename: str = ""
@@ -121,6 +131,10 @@ class BinaryAsset:
     sha256: str = ""
     downloaded_at: str = ""
     download_status: str = ""
+    binary_key: str = ""
+    source_sha256: str = ""
+    source_bytes: int = 0
+    optimized: bool = False
 
 
 @dataclass
@@ -201,8 +215,15 @@ class SourceFile:
         for name in FIELD_ORDER:
             if name == "binary_asset":
                 if self.binary_asset is not None:
+                    # `optimized` is kept even when False. Python treats
+                    # `False == 0`, so the blanket empty-filter below would drop
+                    # it — and "this file was stored verbatim" is a fact a reader
+                    # should not have to infer from a missing key. Same principle
+                    # as `CAPTURE-16`: state it rather than rely on a default.
                     data["binary_asset"] = {
-                        k: v for k, v in vars(self.binary_asset).items() if v not in ("", 0)
+                        k: v
+                        for k, v in vars(self.binary_asset).items()
+                        if k == "optimized" or v not in ("", 0)
                     }
                 continue
             value = getattr(self, name, None)

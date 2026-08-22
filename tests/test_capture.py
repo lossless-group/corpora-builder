@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from src.binary.store import BinStore
 from src.capture import EXCERPT_CHARS, FetchResult, add_source
 from src.model import SourceFile
 from src.store import LocalFsStore
@@ -212,25 +213,70 @@ def test_capture_never_writes_an_analyst_verdict(store: LocalFsStore) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Binary siblings
+# Binaries — filed into bin/, pointed at from the markdown
+#
+# `CAPTURE-09` is retired: binaries used to land as a sibling beside their
+# markdown, which is what made them 90.5% of the corpus bytes and forced Git LFS.
+# They now live once, addressed by content hash. See Binary-Ingest-And-Bin-Store.
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.spec("CAPTURE-09")
-def test_a_pdf_gets_a_sibling_sharing_the_stem(store: LocalFsStore) -> None:
+@pytest.mark.spec("CAPTURE-17")
+def test_a_pdf_is_filed_into_bin_and_pointed_at_not_copied_beside(
+    store: LocalFsStore, tmp_path: Path
+) -> None:
     pdf = b"%PDF-1.7\x00 fake bytes"
     fetcher = FakeFetcher(_ok(content_type="application/pdf", raw=pdf, body=""))
+    bin_store = BinStore(store, cache_dir=tmp_path / "cache")
 
-    result = add_source(store, "https://example.org/report.pdf", fetcher, domain="topic/x", now=NOW)
+    result = add_source(
+        store,
+        "https://example.org/report.pdf",
+        fetcher,
+        domain="topic/x",
+        now=NOW,
+        bin_store=bin_store,
+    )
 
-    sibling = result.path[: -len(".md")] + ".pdf"
-    assert store.read(sibling) == pdf
+    asset = SourceFile.parse(store.read(result.path).decode()).binary_asset
+    assert asset is not None
+    assert asset.download_status == "ok"
 
-    written = SourceFile.parse(store.read(result.path).decode())
-    assert written.binary_asset is not None
-    assert written.binary_asset.download_status == "ok"
-    assert written.binary_asset.bytes == len(pdf)
-    assert len(written.binary_asset.sha256) == 64
+    # the pointer, not a path beside the markdown
+    assert asset.binary_key.startswith("bin/")
+    assert asset.sha256 in asset.binary_key
+    assert store.read(asset.binary_key) == pdf
+
+    # provenance is carried even when nothing was optimized
+    assert asset.source_sha256 == asset.sha256
+    assert asset.source_bytes == asset.bytes == len(pdf)
+    assert asset.optimized is False
+
+    # and emphatically NOT beside the markdown
+    assert result.path[: -len(".md")] + ".pdf" not in store.list("")
+
+
+@pytest.mark.spec("CAPTURE-18")
+def test_the_same_pdf_in_two_domains_is_one_object(store: LocalFsStore, tmp_path: Path) -> None:
+    pdf = b"%PDF-1.7\x00 a report two domains both want"
+    bin_store = BinStore(store, cache_dir=tmp_path / "cache")
+
+    paths = [
+        add_source(
+            store,
+            f"https://example.org/{n}/report.pdf",
+            FakeFetcher(_ok(content_type="application/pdf", raw=pdf, body="")),
+            domain=d,
+            now=NOW,
+            bin_store=bin_store,
+        ).path
+        for n, d in (("a", "topic/alpha"), ("b", "topic/beta"))
+    ]
+
+    assets = [SourceFile.parse(store.read(p).decode()).binary_asset for p in paths]
+    assert assets[0] is not None and assets[1] is not None
+    assert assets[0].binary_key == assets[1].binary_key
+    assert len(store.list("bin/")) == 1
 
 
 @pytest.mark.spec("CAPTURE-10")

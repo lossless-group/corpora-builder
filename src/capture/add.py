@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from src.binary.ingest import ingest_binary
+from src.binary.store import BinStore
 from src.capture.binary import build_binary_asset, is_binary
 from src.capture.fetch import Fetcher, prose_excerpt
 from src.model import SourceFile, StrandedContent, normalize_url, source_filename
@@ -82,6 +84,7 @@ def add_source(
     full: bool = False,
     origin: str = "analyst-paste",
     now: str = "",
+    bin_store: BinStore | None = None,
 ) -> AddResult:
     """Fetch `url`, build a source file, and write it unless it already exists."""
     stamp = now or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -125,13 +128,17 @@ def add_source(
     path = f"{prefix}{filename}"
 
     if is_binary(url, result.content_type):
-        sibling_name = filename[: -len(".md")] + ".pdf"
+        # The label a human reads. NOT a path any more — the bytes live once in
+        # `bin/`, addressed by their own hash, per Binary-Ingest-And-Bin-Store.
+        label = filename[: -len(".md")] + ".pdf"
         if result.ok and result.raw:
-            store.write(f"{prefix}{sibling_name}", result.raw)
-            source.binary_asset = build_binary_asset(sibling_name, result.raw, stamp, "ok")
+            ingested = ingest_binary(bin_store or BinStore(store), result.raw, ext=".pdf")
+            source.binary_asset = build_binary_asset(
+                label, result.raw, stamp, "ok", ref=ingested.ref
+            )
         else:
             status = "http_error" if not result.ok else "fetch_failed"
-            source.binary_asset = build_binary_asset(sibling_name, b"", stamp, status)
+            source.binary_asset = build_binary_asset(label, b"", stamp, status)
 
     store.write(path, source.render().encode("utf-8"))
     return AddResult(path=path, created=True, source=source)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 
+from src.binary.keys import BinaryRef
 from src.model import BinaryAsset
 
 #: Content types that get a sibling. Deliberately narrow — a corpus of
@@ -26,12 +27,35 @@ def is_binary(url: str, content_type: str) -> bool:
     return url.split("?")[0].lower().endswith(".pdf")
 
 
-def build_binary_asset(filename: str, data: bytes, downloaded_at: str, status: str) -> BinaryAsset:
-    """Describe a downloaded (or failed) binary.
+def build_binary_asset(
+    filename: str,
+    data: bytes,
+    downloaded_at: str,
+    status: str,
+    ref: BinaryRef | None = None,
+) -> BinaryAsset:
+    """Describe a stored (or failed) binary.
 
-    Called on the failure path too, with empty `data` — which is the point. The
-    block records that a binary was expected and what happened to it.
+    Called on the failure path too, with empty `data` and no `ref` — which is the
+    point. The block records that a binary was expected and what happened to it,
+    and a failure leaves no `binary_key` because nothing was stored.
+
+    When `ref` is present it is authoritative: `sha256` and `bytes` describe what
+    is actually in `bin/`, which is the optimized artifact when one was accepted,
+    while `source_*` preserves what the publisher served.
     """
+    if ref is not None:
+        return BinaryAsset(
+            filename=filename,
+            bytes=ref.size,
+            sha256=ref.sha256,
+            downloaded_at=downloaded_at,
+            download_status=status,
+            binary_key=ref.key,
+            source_sha256=ref.source_sha256,
+            source_bytes=ref.source_size,
+            optimized=ref.optimized,
+        )
     return BinaryAsset(
         filename=filename,
         bytes=len(data),
