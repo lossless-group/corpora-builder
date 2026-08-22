@@ -9,7 +9,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.2
+semantic_version: 0.0.0.3
 status: Draft
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]]"
 tags:
@@ -167,6 +167,7 @@ existing binaries.
 | `BIN-18` | Given the conformance checks above, when they run against `LocalFsStore` and an in-memory store in turn, then all pass against both with no implementation-specific branching in the test bodies |
 | `BIN-19` | Given the same binary referenced by wrappers in two different corpora, when it is fetched for the second corpus, then the local cache serves it and no remote read occurs |
 | `BIN-20` | Given a cached binary, when the cache is cleared, then no wrapper changes, the remote object is untouched, and a later fetch restores identical bytes |
+| `BIN-21` | Given Ghostscript is not installed, when a PDF is ingested, then the original bytes are stored, `optimized` is `false`, and the capture succeeds rather than failing |
 
 **Not in the automated suite, run deliberately:**
 
@@ -235,13 +236,41 @@ setting rather than in the code.
    implementation of the same seam, and its own docstring already argues it is
    correct by construction — *"an object named by its own sha256 can never
    change, so a cache keyed on it never needs invalidating."*
-2. **What is `numcopies` here, concretely?** Behaviour 9 says "confirm the remote
-   has it." With one bucket that is one copy, and a bucket is not a backup.
-   Whether R2 alone is enough to justify local deletion is a durability judgment,
-   not a code question.
-3. **Ghostscript as a dependency.** `gs` is a system binary, not a Python
-   package, so the Phase 7 packaging story has to carry it. Named so its absence
-   from `pyproject.toml` is a decision rather than an oversight.
+2. ~~**What is `numcopies` here, concretely?**~~ **Resolved 2026-08-22: one R2
+   bucket is enough, for now.** Operator's call, and it is cheap to be wrong
+   about — under the resolution to (1) the only thing ever deleted locally is a
+   *cache entry*, which is lossless by definition. Nothing in this spec deletes
+   a remote object.
+
+   **Deferred, with a trigger:** redundancy beyond the single bucket — a
+   scheduled copy of the R2 bucket to a second location, with a restore path.
+   Re-open when the corpus becomes something a client depends on rather than
+   something we maintain for them, or when a second operator's work is only in
+   the bucket. **Not now**, and explicitly not this spec's problem.
+3. **Ghostscript as a dependency — and it makes W1 mandatory.** `gs` is a system
+   binary, not a Python package, so it cannot live in `pyproject.toml` and no
+   `uv sync` will produce it.
+
+   That is not a gap in this spec so much as the first hard instance of a
+   requirement already recorded. The 2026-07-20 operator wishlist, W1, said: *"The
+   local install is **one artifact** — a containerized/VM setup that brings every
+   tool with it. No 'first install git, then…' onboarding."* Until now the
+   motivating example was git. **Ghostscript is the second, and unlike git it is
+   something no collaborator would ever plausibly already have.**
+
+   Operator, 2026-08-22: *"We are at some point soon going to have to have an
+   installer or an installable native app with its own appIcon art… The installer
+   should, if it doesn't automatically, create some kind of virtual env or
+   container image or something, and install everything it needs."*
+
+   So the resolution is a hand-off, not a decision here: **`gs` is a named input
+   to Phase 7's packaging**, alongside the Python venv the memopop sidecar
+   architecture already assumes. Recorded there so it is a packaging requirement
+   rather than a surprise during a build.
+
+   Until Phase 7 exists, optimization degrades rather than fails: **if `gs` is
+   absent, ingest stores the original verbatim and records `optimized: false`.**
+   A missing optimizer must never block a capture.
 
 ## Related
 
