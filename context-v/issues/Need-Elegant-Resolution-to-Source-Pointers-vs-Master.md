@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.2.0
+at_semantic_version: 0.0.3.0
 status: Open — Stopgap Proposed, Not Built
 site_uuid: 666ec300-f412-4ed9-893a-099cc67e6938
 hex_code: xu3mtx
@@ -140,7 +140,8 @@ that keeps "the corpus is files you can read without our software" true.
 
 > Add a **multibox** alongside the inbox, where the body — the master — goes.
 > Update the pointers to reference the multibox. The inbox goes back to meaning
-> exactly one thing: **untriaged**.
+> exactly one thing: **awaiting triage**. And a **gatedbox** for what could not
+> be triaged at all.
 
 This separates two ideas currently sharing one folder: *"nobody has looked at
 this yet"* and *"this is where the text lives."* `live/inbox/` holds 95 files
@@ -197,6 +198,72 @@ After the backfill:
   bodies in one place the builder can index the actual text. This is the largest
   single upside and it is a side effect, not the goal.
 
+### And a gatedbox (operator, 2026-08-23)
+
+> The inbox is supposed to be for **triage**. Quite a few in there could not be
+> triaged properly.
+
+Right, and those are a different queue. A blocked fetch is not a decision waiting
+to be made — it is a **fetch waiting to succeed**. Mixing them makes the inbox
+read as 95 pending decisions when it is really 80 decisions plus 14 things
+nobody *could* decide about.
+
+Three boxes, one question each:
+
+| box | the question it holds | the action that empties it |
+|---|---|---|
+| `live/inbox/` | has anyone decided where this goes? | a human or agent triages it |
+| `live/gatedbox/` | did the fetch produce anything to decide about? | retry, a different fetcher, a manual paste |
+| `live/multibox/` | where is the text? | nothing — it is the answer |
+
+#### Gating is not only an inbox state
+
+The finding that makes this more than tidying. Scanning all 832 sources for
+fetch failures:
+
+| where the blocked fetches are | count |
+|---|---|
+| `live/inbox/`, marked `gated` | 8 |
+| **filed inside a domain folder** | **7** |
+| `live/_discarded/` | 1 |
+
+Three funder folders hold a Cloudflare interstitial titled *"Just a moment…"*,
+`mae-philanthropies` holds two *Vercel Security Checkpoint* pages, and
+`think-tanks/brookings` holds one more. **Those are inside scoped corpora right
+now.** An agent drafting against Arnold Ventures can retrieve, quote and cite
+*"Just a moment…"* — which is precisely the failure mode scoping exists to
+prevent, since accuracy and attribution are the whole product.
+
+So the gatedbox has to receive things **out of domain folders**, not merely
+divert new arrivals from the inbox.
+
+#### What `gated` already means, read from the data
+
+Of the 14 currently marked `gated`, **13 are fetch failures** in six different
+disguises — and only 8 match an obvious title blocklist:
+
+| what it actually was | count |
+|---|---|
+| Cloudflare / Access Denied / Vercel checkpoint | 8 |
+| `Robot Challenge Screen` | 2 |
+| `Fetch failed (HTTP 524 <none>)` | 1 |
+| `Page Unavailable` | 1 |
+| title is the bare URL — no metadata extracted at all | 1 |
+| **a real article, gated on judgement** | **1** |
+
+Two consequences:
+
+1. **A title blocklist is not a gate rule.** It missed five of thirteen. The
+   field designed to record this is `machine_verdict` — *"reachability is not
+   approval"* — and it is **empty on nearly all of them**. Making capture always
+   record it turns the gatedbox from a heuristic into a mechanical sort. That is
+   the cheap fix hiding inside this issue.
+2. **Keep judgement-gating out of it.** One of the 14 is a genuine article held
+   back on a human call, not a fetch failure. A gatedbox that swallows it
+   silently converts a decision the operator wanted to make into a retry queue
+   nobody will look at. Fetch failures move; judgement stays in the inbox, where
+   deciding is the point.
+
 ### Open before building
 
 1. **Filename shape.** `<slug>--<sha8-of-normalized-url>.md` stays readable and
@@ -211,13 +278,23 @@ After the backfill:
 
 ### Migration, in order
 
-1. Backfill `normalized_url` on 511 filed sources. No network. Reversible.
-2. Create `live/multibox/`; move the 75 inbox bodies into it; stamp `body_key`
+1. **Record `machine_verdict` on capture, always.** Not a migration — it makes
+   every step below mechanical instead of heuristic, and it is the one change
+   that stops this recurring.
+2. Backfill `normalized_url` on 511 filed sources. No network. Reversible.
+3. Sweep fetch failures into `live/gatedbox/` — the 8 gated inbox entries, and
+   the **7 sitting in domain folders**, which is the half that affects drafting.
+   Leave the judgement-gated one where it is.
+4. Create `live/multibox/`; move the 75 inbox bodies into it; stamp `body_key`
    on every pointer sharing that identity.
-3. Flip those inbox files to triaged, or delete them per the 2026-07-25 ruling.
-4. `live/inbox/` now means untriaged, and nothing else.
+5. Flip those inbox files to triaged, or delete them per the 2026-07-25 ruling.
+6. `live/inbox/` now means one thing: awaiting a decision.
 
-**Writes into a client corpus.** Steps 1–3 mutate reach-edu and are not
+Step 3 is the one worth doing first even if nothing else happens. It is small,
+it is reversible, and until it runs there are seven pages inside scoped corpora
+that an agent can cite and a reader cannot verify.
+
+**Writes into a client corpus.** Steps 2–5 mutate reach-edu and are not
 unattended work.
 
 ## What would make this urgent
