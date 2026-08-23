@@ -171,7 +171,7 @@
           placeholder="path to the git repo holding this corpus"
           spellcheck="false"
         />
-        <button type="submit" disabled={loadingChanges || !changesRepo.trim()}>
+        <button type="submit" class="go" disabled={loadingChanges || !changesRepo.trim()}>
           {loadingChanges ? 'Reading…' : 'Show'}
         </button>
       </form>
@@ -220,7 +220,7 @@
             <div class="chips">
               {#each chips(row) as [text, on]}<span class="chip" class:on>{text}</span>{/each}
               {#if row.binary_key}
-                <span class="chip pdf" class:dim={row.binary_state === 'not_downloaded'}>
+                <span class="chip" class:on={row.binary_state === 'present'}>
                   PDF {kb(row.binary_bytes)}{row.binary_optimized ? ' · optimized' : ''}
                 </span>
               {/if}
@@ -295,40 +295,31 @@
   li.err .t { color: var(--warn); }
   .x { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
   .e { color: var(--ink-dim); font-size: 13.5px; }
-  .tabs { display: flex; gap: 4px; margin: 0 0 var(--space-md); }
-  .tabs button {
-    font: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer;
-    border: 1px solid var(--line); background: var(--surface); color: var(--ink-dim);
-    border-radius: var(--radius-pill);
-  }
+  /* Everything below inherits the global `input, select, button` rule above —
+     the `control` component in DESIGN.md — and states only what differs. An
+     earlier draft restated font, border, background and padding on each new
+     control and swapped --radius-sm for --radius-md, which is how a design
+     system quietly stops being one. */
+
+  .tabs { display: flex; gap: 6px; margin: 0 0 var(--space-md); }
+  .tabs button { border-radius: var(--radius-pill); color: var(--ink-dim); }
   .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 
-  .repo { display: flex; gap: 8px; margin-bottom: var(--space-sm); }
-  .repo input {
-    flex: 1; font: inherit; font-size: 13px; font-family: var(--font-mono);
-    padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-md);
-    background: var(--surface); color: var(--ink);
-  }
-  .repo button {
-    font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
-    border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-ink);
-  }
-  .repo button:disabled { opacity: .5; cursor: default; }
+  .repo { display: flex; gap: 10px; margin-bottom: var(--space-sm); }
+  .repo input { flex: 1; min-width: 200px; font-family: var(--font-mono); }
+  .repo button.go { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 
-  .feed { list-style: none; padding: 0; margin: var(--space-md) 0 0; }
-  .feed li { padding: 12px 0; border-bottom: 1px solid var(--line); }
-  .feed .when { font-size: 12px; color: var(--ink-dim); font-family: var(--font-mono); }
-  .feed .why { margin: 4px 0 6px; font-size: 14.5px; color: var(--ink); }
-  .feed .counts { display: flex; gap: 10px; font-size: 12px; color: var(--ink-dim); }
-  .feed .counts .dim { opacity: .7; }
+  /* A feed entry is a card that is not clickable — same padding and radius, no
+     hover, because there is nothing to open. */
+  .feed { list-style: none; padding: 0; margin: 0; }
+  .feed li { padding: 12px 14px; border-radius: var(--radius-md); }
+  .feed li + li { border-top: 1px solid var(--line); border-radius: 0; }
+  .feed .when { color: var(--ink-dim); font-size: 12.5px; }
+  .feed .why { font-weight: 580; margin: 3px 0 5px; }
+  .feed .counts { display: flex; gap: 10px; color: var(--ink-dim); font-size: 13.5px; }
 
-  .getpdf {
-    display: inline-block; margin: 2px 0 10px; font-size: 12px;
-    color: var(--accent); text-decoration: none;
-  }
+  .getpdf { display: inline-block; margin: 0 0 8px 14px; font-size: 12.5px; color: var(--accent); text-decoration: none; }
   .getpdf:hover { text-decoration: underline; }
-  .chip.pdf { background: var(--accent); color: var(--accent-ink); }
-  .chip.pdf.dim { background: var(--chip-bg); color: var(--ink-dim); }
 
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); color: var(--ink-dim); }

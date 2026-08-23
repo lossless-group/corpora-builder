@@ -36,3 +36,4 @@ app/build/
 app/.svelte-kit/
 app/src-tauri/target/
 app/src-tauri/gen/
+.image-staging/
