@@ -95,6 +95,22 @@ def bundle_content_type(rel: str) -> str:
     return _content_type(rel)
 
 
+def bundle_cache_control(rel: str) -> str:
+    """How long a bundle file may be reused.
+
+    Fragments, index shards and filter shards are named by a hash of their own
+    contents — a given name can never mean different bytes — so they are
+    immutable and the browser should never ask twice. That matters because
+    drawing a page of results fetches one fragment per row, and a second search
+    touching the same top results would otherwise pay for them all over again.
+
+    Everything at the bundle root is rewritten on every build, so it is not.
+    """
+    if rel.startswith(CONTENT_ADDRESSED) or rel.endswith(".pf_meta"):
+        return "public, max-age=31536000, immutable"
+    return "no-cache"
+
+
 def bundle_fingerprint(store: CorpusStore) -> str:
     """The manifest fingerprint the current bundle was built from, or empty."""
     try:

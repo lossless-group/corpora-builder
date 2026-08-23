@@ -37,6 +37,12 @@ export interface SourceRow {
   binary_state: string;
   binary_bytes: number;
   binary_optimized: boolean;
+  /** The `domains:` frontmatter list — `strategy:workforce-development` and
+   *  friends. NOT `domain` above: that is the folder the bytes sit in, this is
+   *  the emphasis the operator put on them. The server has sent this since
+   *  focus shipped; this interface simply never declared it, so the field was
+   *  arriving and the type said it did not exist. */
+  domains: string[];
 }
 
 /** One unit of work against the corpus. Engine-agnostic by design — git today,

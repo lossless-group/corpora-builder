@@ -18,6 +18,11 @@
     type Bundle
   } from '$lib/search';
 
+  // key → the passage that matched, with <mark> around the terms. Kept beside
+  // the rows rather than on them: it belongs to a QUERY, not to a source, and
+  // putting it on the row would leave the last search's highlighting behind.
+  let marks = $state(new Map<string, string>());
+
   let meta = $state<Meta | null>(null);
   let rows = $state<SourceRow[]>([]);
   let total = $state(0);
@@ -69,6 +74,14 @@
   let pool = $state<SourceRow[]>([]);
   const POOL_LIMIT = 2000;
   const PAGE = 200;
+
+  // Ranked rows are drawn in a much smaller page than unranked ones, and the
+  // reason is asymmetric cost: an unsearched page costs nothing per row — the
+  // rows are already here — while every ranked row drawn costs one fragment
+  // fetch for the passage that matched. Drawing 200 of those was 200 requests
+  // per keystroke's worth of search, which is what made it feel slow.
+  const RANKED_PAGE = 30;
+  let shown = $state(RANKED_PAGE);
 
   async function wireSearch() {
     const decision = decideSearch(bundle, meta?.search_index ?? '');
@@ -229,26 +242,32 @@
     indexStale = data.index_stale;
   }
 
-  /** Rank the pool with Pagefind. No request: the rows are already here. */
+  /** Rank the pool with Pagefind. No request for the rows — they are already
+   *  here — and one fragment fetch per row actually drawn. */
   async function applySearch() {
     if (!ranked) return load();
     if (!search.trim()) {
+      marks = new Map();
       rows = pool.slice(0, PAGE);
       total = pool.length;
       return;
     }
-    const keys = await ranked.keys(search, focus);
+    const page = await ranked.page(search, focus, shown);
     // The pool is already narrowed by domain, so a ranked key outside it simply
-    // finds no row — which is the correct answer, since Pagefind knows nothing
-    // about the domain filter and should not have to.
+    // finds no row — the correct answer, since Pagefind knows nothing about the
+    // domain filter and should not have to.
     const byKey = new Map(pool.map((r) => [r.path, r]));
     const hits: SourceRow[] = [];
-    for (const key of keys) {
-      const row = byKey.get(key);
-      if (row) hits.push(row);
+    const next = new Map<string, string>();
+    for (const hit of page.hits) {
+      const row = byKey.get(hit.key);
+      if (!row) continue;
+      hits.push(row);
+      if (hit.excerpt) next.set(hit.key, hit.excerpt);
     }
-    rows = hits.slice(0, PAGE);
-    total = hits.length;
+    marks = next;
+    rows = hits;
+    total = page.total;
   }
 
   /** Chips grouped by their declared type, so a row of them says what it IS.
@@ -269,17 +288,41 @@
     (meta?.focuses ?? []).find((f) => f.value === focus)?.label ?? ''
   );
 
+  /** A `domains:` tag as the corpus declares it — "Adult Literacy & Numeracy",
+   *  not `strategy:adult-literacy-numeracy`. Falls back to the raw value, since
+   *  a tag naming a folder with no `index.md` is still a real tag. */
+  function tagLabel(value: string): string {
+    return (meta?.focuses ?? []).find((f) => f.value === value)?.label ?? value;
+  }
+
   function toggleFocus(value: string) {
     focus = focus === value ? '' : value;
     tab = 'sources';
     load();
   }
 
+  /** Draw more of the ranked results. A click, not a keystroke — so re-resolving
+   *  the rows already shown is affordable, and the bundle's fragments are served
+   *  immutable so the browser does not re-fetch them at all. */
+  function showMore() {
+    shown += RANKED_PAGE;
+    applySearch();
+  }
+
+  // Server search costs a request that reads the corpus, so it waits. Ranked
+  // search ranks rows already in hand and fetches one fragment per row drawn —
+  // and those are served immutable, so a repeated query fetches nothing at all.
+  // The long wait was buying something that is no longer being spent.
+  const SETTLE_RANKED = 90;
+  const SETTLE_SERVER = 160;
+
   function debounced() {
     clearTimeout(timer);
-    // Ranked search runs against rows already in hand, so the debounce is only
-    // there to stop it ranking on every keystroke — not to spare a request.
-    timer = setTimeout(() => (ranked ? applySearch() : load()), 160);
+    shown = RANKED_PAGE; // a new query starts at the top again
+    timer = setTimeout(
+      () => (ranked ? applySearch() : load()),
+      ranked ? SETTLE_RANKED : SETTLE_SERVER
+    );
   }
 
   async function capture(event: Event) {
@@ -523,7 +566,15 @@
           <button class="card" onclick={() => view(row)}>
             <div class="t">{row.title || '(untitled)'}</div>
             <div class="x">{row.error || row.url || row.path}</div>
-            {#if row.excerpt}<div class="e">{row.excerpt}</div>{/if}
+            {#if marks.has(row.path)}
+              <!-- The passage that matched, not the first 240 characters of the
+                   body — which is the same opening paragraph on every source and
+                   tells you nothing about why this one came back. Already
+                   reduced to text plus <mark> by `safeExcerpt`. -->
+              <div class="e">{@html marks.get(row.path)}</div>
+            {:else if row.excerpt}
+              <div class="e">{row.excerpt}</div>
+            {/if}
             <div class="chips">
               {#each chips(row) as [text, on]}<span class="chip" class:on>{text}</span>{/each}
               {#if row.binary_key}
@@ -533,6 +584,23 @@
               {/if}
             </div>
           </button>
+          {#if row.domains.length}
+            <!-- The `domains:` tags, which the row has always carried and the
+                 card has never shown. Outside the card button because they are
+                 controls in their own right — clicking one focuses it — and a
+                 button inside a button is not markup. -->
+            <div class="tags">
+              {#each row.domains as d (d)}
+                <button
+                  class="tag"
+                  class:on={focus === d}
+                  aria-pressed={focus === d}
+                  title={d}
+                  onclick={() => toggleFocus(d)}>{tagLabel(d)}</button
+                >
+              {/each}
+            </div>
+          {/if}
           {#if row.binary_key}
             <!-- A plain link, deliberately. The binary is bytes the browser can
                  open; routing it through JS would add a copy and lose the
@@ -550,6 +618,13 @@
         <li class="note">Nothing matches.</li>
       {/each}
     </ul>
+    {#if rows.length < total}
+      <p class="more">
+        <button class="relink" onclick={ranked && search.trim() ? showMore : undefined}
+          disabled={!ranked || !search.trim()}
+        >Showing {rows.length} of {total}{ranked && search.trim() ? ' — show more' : ''}</button>
+      </p>
+    {/if}
     {/if}
   {/if}
 </main>
@@ -668,6 +743,25 @@
   .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
   .chip { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); }
   .chip.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+
+  .more { margin: 12px 0 0; text-align: center; }
+  .tags { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 11px 8px; }
+  .tag {
+    font-size: 11px; padding: 1px 7px; width: auto;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--color-border);
+    background: none; color: var(--color-accent); cursor: pointer;
+  }
+  .tag:hover { border-color: var(--color-accent); }
+  .tag.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+  /* The matched terms. Tinted rather than the browser's yellow, which belongs
+     to no mode this app has. */
+  .e :global(mark) {
+    background: color-mix(in oklab, var(--color-accent) 28%, transparent);
+    color: var(--color-text);
+    border-radius: 2px;
+    padding: 0 1px;
+  }
 
   .backdrop { position: fixed; inset: 0; background: var(--fx-scrim); display: grid; place-items: center; padding: 24px; }
   .modal { background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }

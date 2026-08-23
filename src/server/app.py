@@ -26,6 +26,7 @@ from src.identity import Workspace
 from src.index.manifest import MANIFEST_KEY
 from src.index.rebuild import reindex as rebuild_index
 from src.index.search_index import (
+    bundle_cache_control,
     bundle_content_type,
     bundle_fingerprint,
     bundle_key,
@@ -228,7 +229,11 @@ def create_app(
             data = store.read(bundle_key(rel))
         except KeyNotFound as exc:
             raise HTTPException(status_code=404, detail=f"not built: {rel}") from exc
-        return Response(content=data, media_type=bundle_content_type(rel))
+        return Response(
+            content=data,
+            media_type=bundle_content_type(rel),
+            headers={"cache-control": bundle_cache_control(rel)},
+        )
 
     @app.post("/api/reindex")
     def reindex() -> dict[str, object]:

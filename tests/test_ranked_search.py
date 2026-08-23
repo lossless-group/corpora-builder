@@ -21,6 +21,7 @@ from src.index.search_index import (
     BUNDLE_FINGERPRINT_KEY,
     BUNDLE_PREFIX,
     build_search_index,
+    bundle_cache_control,
     bundle_content_type,
 )
 from src.server.app import create_app
@@ -188,6 +189,16 @@ def test_the_sidecar_serves_the_bundle_with_usable_content_types(store: LocalFsS
     assert wasm.headers["content-type"].startswith("application/wasm")
 
     assert bundle_content_type("wasm.en.pagefind") == "application/wasm"
+
+    # Drawing a page of results costs one fragment fetch per row. Those names are
+    # hashes of their own contents, so a second search touching the same top
+    # results must not pay for them again.
+    fragment = next(k for k in store.list(BUNDLE_PREFIX) if "/fragment/" in k)
+    cached = client.get(f"/pagefind/{fragment[len(BUNDLE_PREFIX):]}")
+    assert "immutable" in cached.headers["cache-control"]
+    assert "immutable" not in js.headers["cache-control"], "the root is rewritten every build"
+    assert bundle_cache_control("index/en_abc.pf_index").startswith("public")
+    assert bundle_cache_control("pagefind-entry.json") == "no-cache"
 
 
 @pytest.mark.spec("SEARCH-10")

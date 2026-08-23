@@ -140,7 +140,24 @@ focus chip was clicked — 41 rows held, 847 in the corpus. It looked like a
 deliberate fallback and was a comparison against the wrong number, which is why
 the browser drive is part of the loop and not a formality.
 
-### 7. No Node, no bundle, no failure
+### 7. A result says why it matched, and costs one fetch to say it
+
+Pagefind returns matches lazily: the ranked list is cheap, and each result's
+`data()` is a **separate round trip** for that record's fragment. It carries the
+title, the focus values, and the passage that matched with `<mark>` around the
+terms — which is what makes a result say *why* it matched instead of showing the
+same first 240 characters of body that every source shows.
+
+**Resolve only what you draw.** Resolving every match cost **615 fetches and
+821ms for one query** on an 845-source corpus, measured against local files; over
+HTTP to the sidecar it is the reason search felt slow. The count comes from the
+result list, which needs no fetch; the visible page is resolved in parallel.
+
+The excerpt is rendered as HTML, so it is first reduced to text plus `<mark>`.
+Pagefind escapes fragment content itself — but "the library escapes it" is a
+claim that stops being true the day the library changes.
+
+### 8. No Node, no bundle, no failure
 
 `check.sh` already runs two blocking Node rungs and already skips them when Node
 is absent, so the Python side stays runnable on a machine that has never built
@@ -166,6 +183,7 @@ Ownership is split across both suites; the ledger merges them.
 | `SEARCH-08` | py | Given a corpus and a manifest, when the search index is built, then only keys under `index/` are written and no source is modified |
 | `SEARCH-09` | py | Given a machine with no Node on PATH, when the search index is built, then it is skipped with a stated reason and reported as success |
 | `SEARCH-11` | node | Given more sources selected by the current filter than the client is holding rows for, when coverage is judged, then ranking stands down in favour of the server and says why — and a filter narrower than the window is still covered by its own rows |
+| `SEARCH-12` | node | Given a query matching far more sources than are drawn, when a page of results is taken, then the count covers every match, each drawn row costs at most one fragment fetch, and each hit carries the marked passage that matched — reduced to text and `<mark>`, nothing else |
 | `SEARCH-10` | py | Given a built bundle, when the sidecar serves it, then each file is returned with the content type its runtime requires, and a path escaping the bundle is refused |
 
 ## Acceptance

@@ -36,7 +36,47 @@ export interface PagefindResponse {
 export interface PagefindResult {
   id: string;
   score: number;
-  data(): Promise<{ url: string; meta?: Record<string, string>; excerpt?: string }>;
+  /** Fetches THIS result's fragment. One network round trip, every time — see
+   *  `RankedSearch.page` for why that is the single most important fact here. */
+  data(): Promise<PagefindData>;
+}
+
+export interface PagefindData {
+  url: string;
+  meta?: Record<string, string>;
+  /** The matching passage, with `<mark>` around the terms that matched. This is
+   *  what makes a result say WHY it matched rather than just that it did. */
+  excerpt?: string;
+  filters?: Record<string, string[]>;
+}
+
+/** One result, resolved. */
+export interface RankedHit {
+  key: string;
+  title: string;
+  /** Sanitised excerpt — text plus `<mark>`, nothing else. */
+  excerpt: string;
+  score: number;
+  focuses: string[];
+}
+
+export interface RankedPage {
+  /** Every match, counted without resolving any of them. */
+  total: number;
+  /** Only the ones being drawn. */
+  hits: RankedHit[];
+}
+
+/**
+ * Pagefind's excerpt, reduced to text and `<mark>`.
+ *
+ * Pagefind escapes fragment content and inserts only `<mark>`, so this is a
+ * belt to its braces — but the string is rendered as HTML, and "the library
+ * escapes it" is a claim that stops being true the day the library changes.
+ * Every other tag goes, attributes and all: `<mark foo>` is not `<mark>`.
+ */
+export function safeExcerpt(raw: string): string {
+  return raw.replace(/<(?!\/?mark>)[^>]*>/g, '');
 }
 
 export interface Bundle {
@@ -131,21 +171,43 @@ export class RankedSearch {
   }
 
   /**
-   * Matching corpus keys, best first.
+   * One page of results, best first, with the passage that matched.
+   *
+   * **Resolve only what you draw.** `data()` fetches that result's fragment —
+   * one round trip each. Resolving every match cost 615 fetches and 821ms for a
+   * single query on an 845-source corpus, measured against local files; over
+   * HTTP to the sidecar it is worse. The count comes from `results.length`,
+   * which needs no fetch at all, and only the visible page is resolved — in
+   * parallel, because they are independent.
    *
    * `focus` goes through Pagefind's FILTER rather than the query text. A tag
    * like `strategy:adult-literacy-numeracy` is not prose — routed through the
    * text index it would be tokenised and stemmed, and an exact tag would stop
    * being exact.
    */
-  async keys(query: string, focus = ''): Promise<string[]> {
+  async page(query: string, focus = '', limit = 50): Promise<RankedPage> {
     const res = await this.api.search(
       query.trim() ? query : null,
       focus ? { filters: { focus } } : undefined
     );
-    const out: string[] = [];
-    for (const hit of res.results) out.push(keyOf(await hit.data()));
-    return out;
+    const hits = await Promise.all(
+      res.results.slice(0, limit).map(async (hit) => {
+        const d = await hit.data();
+        return {
+          key: keyOf(d),
+          title: d.meta?.title ?? '',
+          excerpt: safeExcerpt(d.excerpt ?? ''),
+          score: hit.score,
+          focuses: d.filters?.focus ?? []
+        };
+      })
+    );
+    return { total: res.results.length, hits };
+  }
+
+  /** Matching corpus keys, best first. A thin read over `page`. */
+  async keys(query: string, focus = '', limit = 50): Promise<string[]> {
+    return (await this.page(query, focus, limit)).hits.map((h) => h.key);
   }
 
   /**

@@ -24,6 +24,7 @@ import {
   decideSearch,
   keyOf,
   poolCoversCorpus,
+  safeExcerpt,
   type PagefindApi
 } from './search.ts';
 
@@ -68,6 +69,9 @@ const ENTRIES = [
 let dir = '';
 let api: PagefindApi;
 let ranked: RankedSearch;
+/** Counts fragment fetches, so "how many round trips did that cost" is an
+ *  assertion rather than a hope. */
+let fetches = 0;
 
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'ranked-search-'));
@@ -88,6 +92,7 @@ before(async () => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (!url.startsWith('file:')) return realFetch(input as RequestInfo, init);
+    fetches++;
     const body = await readFile(new URL(url));
     const type = url.endsWith('.pagefind')
       ? 'application/wasm'
@@ -224,4 +229,47 @@ test('SEARCH-11 ranking stands down when the rows in hand are not all of them', 
   // CURRENT filter selects, not the corpus total. Comparing to the corpus stood
   // ranking down on every focus chip — 41 rows held, 847 in the corpus.
   assert.equal(poolCoversCorpus(41, 41), true, 'a narrowed listing is covered by its own rows');
+});
+
+// ---------------------------------------------------------------------------
+// resolve only what you draw
+// ---------------------------------------------------------------------------
+
+test('SEARCH-12 a page of results costs a fetch per row shown, not per match', async () => {
+  // The regression this exists to prevent, measured before it was fixed: this
+  // resolved every match, which was 615 fetches and 821ms for ONE query against
+  // local files. Over HTTP to the sidecar it was the reason search felt slow.
+  // Every key begins `live/`, and the builder indexes the key — so this is the
+  // one query guaranteed to match the whole fixture, which is what makes
+  // "fetches did not scale with matches" a real claim.
+  const all = await ranked.page('live', '', 1000);
+  assert.ok(all.total >= 4, `the query must match most of the fixture; matched ${all.total}`);
+
+  await ranked.page('live', '', 2); // warm the shared index/meta chunks
+  fetches = 0;
+  const page = await ranked.page('live', '', 2);
+
+  assert.equal(page.hits.length, 2, 'only the page is resolved');
+  assert.equal(page.total, all.total, '...but the count is still every match');
+  assert.ok(
+    fetches <= page.hits.length,
+    `resolving 2 rows cost ${fetches} fetches; it must not scale with ${all.total} matches`
+  );
+});
+
+test('SEARCH-12 a hit carries the passage that matched, marked', async () => {
+  // A result that says WHY it matched, rather than showing the same first 240
+  // characters of the body every source shows.
+  const { hits } = await ranked.page('apprenticeship', '', 3);
+
+  assert.ok(hits[0].excerpt.includes('<mark>'), hits[0].excerpt);
+  assert.ok(hits[0].title, 'and its title, without a second lookup');
+  assert.ok(Array.isArray(hits[0].focuses));
+});
+
+test('SEARCH-12 an excerpt is reduced to text and mark, nothing else', () => {
+  assert.equal(safeExcerpt('a <mark>b</mark> c'), 'a <mark>b</mark> c');
+  assert.equal(safeExcerpt('<img src=x onerror=alert(1)>hi'), 'hi');
+  assert.equal(safeExcerpt('<mark onload=alert(1)>b</mark>'), 'b</mark>');
+  assert.equal(safeExcerpt('<script>alert(1)</script>ok'), 'alert(1)ok');
 });
