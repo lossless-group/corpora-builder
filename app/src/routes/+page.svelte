@@ -267,34 +267,34 @@
 {/if}
 
 <style>
-  header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 18px; }
+  header { position: sticky; top: 0; z-index: 5; background: var(--color-background); border-bottom: 1px solid var(--color-border); padding: 12px 18px; }
   .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .capture { margin-top: 10px; }
   h1 { font-size: 14.5px; margin: 0; font-weight: 620; letter-spacing: -.01em; }
-  h1 span { color: var(--ink-dim); font-weight: 420; font-size: 13px; }
-  input, select, button { font: inherit; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+  h1 span { color: var(--color-text-muted); font-weight: 420; font-size: 13px; }
+  input, select, button { font: inherit; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
   input[type='search'], .capture input:first-of-type { flex: 1; min-width: 200px; }
   .dom { width: 190px; }
-  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-dim); flex: 0 0 auto; white-space: nowrap; }
-  .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-muted); flex: 0 0 auto; white-space: nowrap; }
+  .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--color-accent); }
   button { cursor: pointer; }
   button:disabled { opacity: .5; cursor: default; }
-  .ro { margin: 8px 0 0; font-size: 12.5px; color: var(--ink-dim); }
+  .ro { margin: 8px 0 0; font-size: 12.5px; color: var(--color-text-muted); }
   code { font-family: var(--font-mono); font-size: 12px; }
   main { padding: 16px 18px 60px; max-width: 1100px; }
-  .count { color: var(--ink-dim); font-size: 13px; margin: 0 0 12px; }
-  .note { color: var(--ink-dim); padding: 10px 0; }
-  .note.ok { color: var(--accent); }
-  .note.err { color: var(--warn); }
+  .count { color: var(--color-text-muted); font-size: 13px; margin: 0 0 12px; }
+  .note { color: var(--color-text-muted); padding: 10px 0; }
+  .note.ok { color: var(--color-accent); }
+  .note.err { color: var(--color-warn-text); }
   ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-  li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow); }
-  li.err { border-color: var(--warn); }
+  li { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--fx-card-shadow); }
+  li.err { border-color: var(--color-warn-text); }
   .card { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 12px 14px; border-radius: var(--radius-md); }
-  .card:hover { background: var(--surface-hover); }
+  .card:hover { background: var(--color-surface-hover); }
   .t { font-weight: 580; margin-bottom: 3px; }
-  li.err .t { color: var(--warn); }
-  .x { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
-  .e { color: var(--ink-dim); font-size: 13.5px; }
+  li.err .t { color: var(--color-warn-text); }
+  .x { color: var(--color-text-muted); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
+  .e { color: var(--color-text-muted); font-size: 13.5px; }
   /* Everything below inherits the global `input, select, button` rule above —
      the `control` component in DESIGN.md — and states only what differs. An
      earlier draft restated font, border, background and padding on each new
@@ -302,31 +302,31 @@
      system quietly stops being one. */
 
   .tabs { display: flex; gap: 6px; margin: 0 0 var(--space-md); }
-  .tabs button { border-radius: var(--radius-pill); color: var(--ink-dim); }
-  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .tabs button { border-radius: var(--radius-pill); color: var(--color-text-muted); }
+  .tabs button.on { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; }
 
   .repo { display: flex; gap: 10px; margin-bottom: var(--space-sm); }
   .repo input { flex: 1; min-width: 200px; font-family: var(--font-mono); }
-  .repo button.go { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .repo button.go { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; }
 
   /* A feed entry is a card that is not clickable — same padding and radius, no
      hover, because there is nothing to open. */
   .feed { list-style: none; padding: 0; margin: 0; }
   .feed li { padding: 12px 14px; border-radius: var(--radius-md); }
-  .feed li + li { border-top: 1px solid var(--line); border-radius: 0; }
-  .feed .when { color: var(--ink-dim); font-size: 12.5px; }
+  .feed li + li { border-top: 1px solid var(--color-border); border-radius: 0; }
+  .feed .when { color: var(--color-text-muted); font-size: 12.5px; }
   .feed .why { font-weight: 580; margin: 3px 0 5px; }
-  .feed .counts { display: flex; gap: 10px; color: var(--ink-dim); font-size: 13.5px; }
+  .feed .counts { display: flex; gap: 10px; color: var(--color-text-muted); font-size: 13.5px; }
 
-  .getpdf { display: inline-block; margin: 0 0 8px 14px; font-size: 12.5px; color: var(--accent); text-decoration: none; }
+  .getpdf { display: inline-block; margin: 0 0 8px 14px; font-size: 12.5px; color: var(--color-accent); text-decoration: none; }
   .getpdf:hover { text-decoration: underline; }
 
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); color: var(--ink-dim); }
-  .chip.on { background: var(--accent); color: var(--accent-ink); }
-  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: grid; place-items: center; padding: 24px; }
-  .modal { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
-  .mhead { border-bottom: 1px solid var(--line); padding: 12px 16px; }
+  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--color-chip-bg); color: var(--color-text-muted); }
+  .chip.on { background: var(--color-accent); color: var(--color-on-accent); }
+  .backdrop { position: fixed; inset: 0; background: var(--fx-scrim); display: grid; place-items: center; padding: 24px; }
+  .modal { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
+  .mhead { border-bottom: 1px solid var(--color-border); padding: 12px 16px; }
   .mhead h1 { flex: 1; }
   pre { margin: 0; padding: 16px 18px; overflow: auto; font-size: 12.5px; font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 66vh; }
 </style>

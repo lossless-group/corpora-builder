@@ -7,6 +7,7 @@
     "dev": "vite dev --port 1420 --strictPort",
     "build": "vite build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "design:drift": "node scripts/design-drift.mjs",
     "tauri": "tauri",
     "dev:native": "tauri dev",
     "build:native": "tauri build"

@@ -6,25 +6,27 @@ description: >
   reading tool: the operator is scanning hundreds of sources to decide what to
   open, so the design gets out of the way of titles and excerpts. Primitives are
   inherited verbatim from memopop-ai's shared-styles so the didi.sh family reads
-  as one product; the semantic layer and the dark mode are new here.
+  as one product; the semantic layer and the dark mode are new here. Token
+  vocabulary is augment-it's, so components move between the two repos unedited.
 
 colors:
-  primary: "#1a3a52"
-  primary-50: "#f0f5f8"
-  primary-100: "#dae5ed"
-  primary-300: "#8fb1c9"
-  primary-700: "#112434"
-  primary-800: "#0d1925"
-  primary-900: "#080e16"
-  secondary: "#1dd3d3"
-  secondary-400: "#33d7d7"
-  accent: "#f59e0b"
-  accent-400: "#facc15"
-  accent-700: "#b45309"
-  neutral-0: "#ffffff"
-  neutral-50: "#f8fafc"
-  neutral-600: "#64748b"
-  neutral-900: "#1a2332"
+  navy-50: "#f0f5f8"
+  navy-100: "#dae5ed"
+  navy-300: "#8fb1c9"
+  navy-500: "#1a3a52"
+  navy-700: "#112434"
+  navy-800: "#0d1925"
+  navy-900: "#080e16"
+  cyan-400: "#33d7d7"
+  cyan-500: "#1dd3d3"
+  amber-400: "#facc15"
+  amber-500: "#f59e0b"
+  amber-700: "#b45309"
+  slate-0: "#ffffff"
+  slate-50: "#f8fafc"
+  slate-600: "#64748b"
+  slate-900: "#1a2332"
+  slate-1000: "#000000"
 
 typography:
   sans:
@@ -65,53 +67,55 @@ spacing:
 
 components:
   card:
-    backgroundColor: "{colors.neutral-0}"
-    borderColor: "{colors.primary-100}"
+    backgroundColor: "{colors.slate-0}"
+    borderColor: "{colors.navy-100}"
     rounded: "{rounded.md}"
     padding: "12px 14px"
     typography: "{typography.card-title}"
   card-error:
-    backgroundColor: "{colors.neutral-0}"
-    borderColor: "{colors.accent-700}"
+    backgroundColor: "{colors.slate-0}"
+    borderColor: "{colors.amber-700}"
     rounded: "{rounded.md}"
   chip:
-    backgroundColor: "{colors.primary-50}"
-    textColor: "{colors.neutral-600}"
+    backgroundColor: "{colors.navy-50}"
+    textColor: "{colors.slate-600}"
     rounded: "{rounded.full}"
     padding: "2px 8px"
     typography: "{typography.chip}"
   chip-active:
-    backgroundColor: "{colors.primary}"
-    textColor: "{colors.neutral-0}"
+    backgroundColor: "{colors.navy-500}"
+    textColor: "{colors.slate-0}"
     rounded: "{rounded.full}"
   control:
-    backgroundColor: "{colors.neutral-0}"
-    borderColor: "{colors.primary-100}"
+    backgroundColor: "{colors.slate-0}"
+    borderColor: "{colors.navy-100}"
     rounded: "{rounded.sm}"
     padding: "7px 10px"
   viewer:
-    backgroundColor: "{colors.neutral-0}"
-    borderColor: "{colors.primary-100}"
+    backgroundColor: "{colors.slate-0}"
+    borderColor: "{colors.navy-100}"
     rounded: "{rounded.lg}"
     typography: "{typography.mono}"
 
 modes:
   light:
-    bg: "{colors.neutral-50}"
-    surface: "{colors.neutral-0}"
-    ink: "{colors.neutral-900}"
-    ink-dim: "{colors.neutral-600}"
-    line: "{colors.primary-100}"
-    accent: "{colors.primary}"
-    warn: "{colors.accent-700}"
+    color-background: "{colors.slate-50}"
+    color-surface: "{colors.slate-0}"
+    color-text: "{colors.slate-900}"
+    color-text-muted: "{colors.slate-600}"
+    color-border: "{colors.navy-100}"
+    color-accent: "{colors.navy-500}"
+    color-warn-text: "{colors.amber-700}"
+    fx-scrim: "45% {colors.slate-1000}"
   dark:
-    bg: "{colors.primary-900}"
-    surface: "{colors.primary-800}"
-    ink: "{colors.primary-50}"
-    ink-dim: "{colors.primary-300}"
-    line: "{colors.primary-700}"
-    accent: "{colors.secondary}"
-    warn: "{colors.accent-400}"
+    color-background: "{colors.navy-900}"
+    color-surface: "{colors.navy-800}"
+    color-text: "{colors.navy-50}"
+    color-text-muted: "{colors.navy-300}"
+    color-border: "{colors.navy-700}"
+    color-accent: "{colors.cyan-500}"
+    color-warn-text: "{colors.amber-400}"
+    fx-scrim: "62% {colors.slate-1000}"
 ---
 
 # Corpora — Lossless Native
@@ -137,29 +141,57 @@ amber, Inter and JetBrains Mono. corpora-builder is the fourth surface in the
 didi.sh family and should not read as a stranger.
 
 It is worth recording that `memopop-native` itself does **not** consume
-`shared-styles`, despite its CLAUDE.md saying it does; its components hardcode
-hexes in per-component style blocks. So this file inherits from the *system*, not
-from the sibling app's drift — which is the convergence
-[[Design-Front-Loading-and-the-Fable-Build-Loop]] asks corpora-builder to lead
-rather than follow.
+`shared-styles`, despite its CLAUDE.md saying it does; its components carry ~700
+colour literals and reinvent a fragment of a token system twice, locally and
+under two different names (`--ctl-*` in `DealWorkspace.svelte`, `--s-*` in
+`SourceApproval.svelte`). So the primitives here come from the *system*, not from
+the sibling app's drift.
+
+### The names are augment-it's; the palette is not
+
+[[Design-Front-Loading-and-the-Fable-Build-Loop]] asked whether corpora-builder
+could be "the reference the sibling design systems converge toward," on the
+premise that the siblings were "probably messy if not total chaos." **That
+premise was measured on 2026-08-22 and holds for memopop-native and not for
+augment-it**, which carries an eleven-rule federated contract, a drift script, a
+`@property` fallback layer, three modes, and contrast verified across all 108
+text-on-surface pairs. It is the only real design system in ai-labs. A 17-member
+system with a checker does not converge toward a one-page app.
+
+So this file converges **on the vocabulary** and holds its own palette:
+
+| | source | why |
+|---|---|---|
+| Tier-1 / Tier-2 token names, `__` separator, `data-mode` | augment-it | the vocabulary is the interface — patterns travel this tree by copy-from, and a component cannot be copied across a rename |
+| navy / cyan / amber, Inter + JetBrains Mono | memopop shared-styles | the didi.sh family's brand; augment-it is magenta on near-black in monospace, and a different product |
+
+The split is the point. **Names are the portable part, hue is the brand part.**
+Taking both would have repainted a reading tool to settle a naming question;
+taking neither leaves every shared component one find-and-replace away from
+working.
+
+Where corpora-builder can still lead: augment-it's frontmatter registers 17
+member `DESIGN.md` files and two exist. Its federal layer is far ahead of this
+one; its local layer is unwritten, and *this document* is the shape that fills
+it.
 
 ## Colors
 
 Three brand families and a neutral ramp, used for exactly one job each.
 
-- **Primary (navy `#1a3a52`)** is structure: borders, the light-mode accent, and
+- **Navy (`#1a3a52`)** is structure: borders, the light-mode accent, and
   every dark-mode surface. It is the colour of the container, never of the
   content.
-- **Secondary (cyan `#1dd3d3`)** is attention: focus rings in both modes, and the
+- **Cyan (`#1dd3d3`)** is attention: focus rings in both modes, and the
   accent in dark mode where navy would disappear into the background.
-- **Accent (amber `#f59e0b`)** is **only** for trouble. A card outlined in amber
+- **Amber (`#f59e0b`)** is **only** for trouble. A card outlined in amber
   is a source that would not parse. Using it decoratively would spend the one
   signal the interface has.
-- **Neutrals** carry text and light-mode surfaces.
+- **Slate** carries text and light-mode surfaces.
 
 The two-tier split is the rule that keeps this honest: components reference
-semantic tokens (`--ink`, `--surface`, `--line`), never primitives
-(`--primary-500`). Switching modes is therefore a remap, not an edit, and a
+semantic tokens (`--color-text`, `--color-surface`, `--color-border`), never
+primitives (`--color__navy-500`). Switching modes is therefore a remap, not an edit, and a
 component's stylesheet is checkably free of raw colour.
 
 ## Typography
@@ -193,9 +225,15 @@ Almost flat. Cards carry a barely-there shadow in light mode and **none at all i
 dark**, where a shadow reads as mud rather than lift; separation there comes from
 surface lightness against the background.
 
-Exactly one thing rises: the source viewer, over a `rgba(0,0,0,.45)` backdrop.
-That is the only modal in the app, and its elevation is what says "you are now
-reading one thing rather than scanning many".
+Exactly one thing rises: the source viewer, over the `--scrim` backdrop. That is
+the only modal in the app, and its elevation is what says "you are now reading
+one thing rather than scanning many".
+
+The scrim is **per-mode**: 45% black in light, 62% in dark. One value cannot do
+both jobs — 45% over a `#080e16` background dims almost nothing, so the modal
+stops reading as raised in exactly the mode where it has no shadow to fall back
+on. It carried a literal `rgba(0,0,0,.45)` in the component until 2026-08-22,
+which is the whole reason nobody noticed.
 
 ## Shapes
 
@@ -242,8 +280,8 @@ is to see what is actually on disk.
 
 ## Do's and Don'ts
 
-**Do** reference semantic tokens from components. `var(--ink)`, never
-`var(--primary-900)`. The two-tier split only pays off if the second tier is the
+**Do** reference semantic tokens from components. `var(--color-text)`, never
+`var(--color__navy-900)`. The two-tier split only pays off if the second tier is the
 only one components touch.
 
 **Do** keep amber for damage. It is the interface's one alarm; spending it on

@@ -3,7 +3,7 @@
 # The full check ladder, cheapest rung first — see
 # context-v/loops/Spec-to-Shipped-With-TDD.md §⑤.
 #
-# Blocking:     black --check · ruff check · pytest
+# Blocking:     black --check · ruff check · pytest · design drift
 # Non-blocking: mypy
 #
 # mypy reports but never gates. memopop-orchestrator runs no type checker at
@@ -24,6 +24,16 @@ uv run black --check . || FAILED=1
 
 hdr "ruff check"
 uv run ruff check . || FAILED=1
+
+hdr "design drift"
+# The token rules stated in app/src/lib/styles/tokens.css, as checks. Skipped
+# rather than failed when node is absent — the Python side must stay runnable
+# on a machine that has never built the frontend.
+if command -v node >/dev/null 2>&1; then
+  node app/scripts/design-drift.mjs || FAILED=1
+else
+  echo "  skipped — node not on PATH"
+fi
 
 hdr "mypy (non-blocking)"
 MYPY_OUT="$(uv run mypy 2>&1)"
