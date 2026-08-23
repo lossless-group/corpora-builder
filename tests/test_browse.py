@@ -208,3 +208,28 @@ def test_a_search_still_reads_everything_because_it_has_to(tmp_path: Path) -> No
     list_sources(store, search="Source 7", limit=10)
 
     assert store.reads == 40
+
+
+@pytest.mark.spec("BROWSE-16")
+def test_filtering_by_domain_is_independent_of_the_storage_layout(tmp_path: Path) -> None:
+    """Two layouts exist in the wild and a domain name belongs to neither.
+
+    The browser used to send `<domain>/` as a key prefix. That matches
+    reach-edu's flat `<type>/<slug>/` corpus and silently matches NOTHING in a
+    corpus this tool wrote, where the same domain lives at
+    `live/<type>/<slug>/sources/`. A filter that returns zero rows for a folder
+    that plainly has sources in it is the failure this project exists against.
+    """
+    store = LocalFsStore(tmp_path / "corpus")
+    wrapper = '---\ntitle: "T"\nurl: "https://e.org/a"\n---\n\nBody.\n'
+    store.write("topics/future-of-work/2026-01-01_flat.md", wrapper.encode())
+    store.write("live/topics/future-of-work/sources/2026-01-02_nested.md", wrapper.encode())
+    store.write("topics/other/2026-01-03_elsewhere.md", wrapper.encode())
+
+    listing = list_sources(store, domain="topics/future-of-work")
+
+    assert listing.total == 2
+    assert {r.path.rsplit("/", 1)[-1] for r in listing.rows} == {
+        "2026-01-01_flat.md",
+        "2026-01-02_nested.md",
+    }

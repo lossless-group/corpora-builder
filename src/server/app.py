@@ -94,12 +94,19 @@ def create_app(
     @app.get("/api/sources")
     def sources(
         prefix: str = Query(""),
+        domain: str = Query("", description="filter by domain folder, layout-independent"),
         search: str = Query(""),
         limit: int = Query(200, ge=1, le=2000),
         offset: int = Query(0, ge=0),
     ) -> dict[str, object]:
         listing = list_sources(
-            store, prefix=prefix, search=search, limit=limit, offset=offset, bin_store=bins
+            store,
+            prefix=prefix,
+            domain=domain,
+            search=search,
+            limit=limit,
+            offset=offset,
+            bin_store=bins,
         )
         return {
             "rows": [r.as_dict() for r in listing.rows],

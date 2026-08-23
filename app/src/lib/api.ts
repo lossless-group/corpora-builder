@@ -94,9 +94,13 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 export const api = {
   meta: () => get<Meta>('/api/meta'),
-  sources: (prefix = '', search = '') =>
+  // `domain` is a folder name, not a key prefix — the server maps it through
+  // `_domain_of`, so the client never learns which storage layout it is talking
+  // to. Sending `<domain>/` as a raw prefix worked for reach-edu and silently
+  // matched nothing in a corpus this tool wrote.
+  sources: (domain = '', search = '') =>
     get<{ rows: SourceRow[]; total: number; domains: string[] }>('/api/sources', {
-      prefix,
+      domain,
       search
     }),
   source: (path: string) => get<string>('/api/source', { path }),

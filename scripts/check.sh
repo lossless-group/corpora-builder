@@ -3,7 +3,7 @@
 # The full check ladder, cheapest rung first — see
 # context-v/loops/Spec-to-Shipped-With-TDD.md §⑤.
 #
-# Blocking:     black --check · ruff check · pytest · design drift
+# Blocking:     black --check · ruff check · pytest · frontend tests · design drift
 # Non-blocking: mypy
 #
 # mypy reports but never gates. memopop-orchestrator runs no type checker at
@@ -42,6 +42,15 @@ MYPY_ERRS="$(printf '%s' "$MYPY_OUT" | grep -cE '^[^ ].*: error:' || true)"
 
 hdr "pytest"
 uv run pytest -q || FAILED=1
+
+hdr "frontend tests"
+# Writes app/.spec-results.json, which the ledger below merges — frontend
+# promises are promises. Skipped rather than failed when node is absent.
+if command -v node >/dev/null 2>&1; then
+  (cd app && node scripts/run-tests.mjs) || FAILED=1
+else
+  echo "  skipped — node not on PATH"
+fi
 
 hdr "ledger"
 uv run python scripts/spec_status.py --no-run || FAILED=1

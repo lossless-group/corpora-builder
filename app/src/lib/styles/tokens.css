@@ -259,9 +259,45 @@ body * {
   transition: background-color 75ms ease, border-color 75ms ease, color 75ms ease;
 }
 
+/* The `control` primitive from DESIGN.md. Global rather than page-scoped: it is
+   the shared shape, and Svelte scopes component styles, so a rule living in one
+   route leaves every other component's inputs unstyled. That is how a design
+   system quietly becomes one page's stylesheet. */
+input,
+select,
+button {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-field);
+  color: var(--color-text);
+}
+
+button {
+  background: var(--color-surface-raised);
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 :focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  border-color: var(--color-accent);
 }
 
 /* box-shadow does not survive forced-colors; restore a real outline there. */

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { mode } from '$lib/mode.svelte';
+  import DomainCombo from '$lib/components/DomainCombo.svelte';
   import { onMount } from 'svelte';
   import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
 
@@ -7,7 +8,7 @@
   let rows = $state<SourceRow[]>([]);
   let total = $state(0);
   let search = $state('');
-  let prefix = $state('');
+  let domainFilter = $state('');
   let booting = $state(true);
   let bootError = $state('');
 
@@ -65,7 +66,7 @@
   }
 
   async function load() {
-    const data = await api.sources(prefix, search);
+    const data = await api.sources(domainFilter, search);
     rows = data.rows;
     total = data.total;
   }
@@ -124,18 +125,28 @@
     <h1>corpora <span>{meta?.label ?? ''}</span></h1>
     <button class="mode" onclick={() => mode.cycle()} title="Cycle light / dark / vibrant">{mode.current}</button>
     <input bind:value={search} oninput={debounced} type="search" placeholder="Search title, excerpt, or path…" />
-    <select bind:value={prefix} onchange={load}>
-      <option value="">All domains</option>
-      {#each meta?.domains ?? [] as d}
-        <option value={d.startsWith('(') ? '' : `${d}/`}>{d}</option>
-      {/each}
-    </select>
+    <div class="dom">
+      <DomainCombo
+        bind:value={domainFilter}
+        domains={meta?.domains ?? []}
+        anyLabel="All domains"
+        placeholder="All domains — type to filter…"
+        onchange={load}
+      />
+    </div>
   </div>
 
   {#if meta?.writable}
     <form class="bar capture" onsubmit={capture}>
       <input bind:value={url} placeholder="Paste a URL to capture…" />
-      <input bind:value={domain} class="dom" placeholder="domain (optional)" />
+      <div class="dom">
+        <DomainCombo
+          bind:value={domain}
+          domains={meta?.domains ?? []}
+          allowNew
+          placeholder="file under… (optional)"
+        />
+      </div>
       <label class="check"><input type="checkbox" bind:checked={full} /> fetch body</label>
       <button disabled={capturing || !url.trim()}>{capturing ? 'Fetching…' : 'Capture'}</button>
     </form>
@@ -282,14 +293,10 @@
   h1 { font-size: 13px; margin: 0; font-weight: 700; letter-spacing: 0; }
   h1 span { color: var(--color-text-muted); font-weight: 400; }
 
-  /* The control primitive. Everything below states only what differs from it. */
-  input, select, button { font: inherit; padding: .35rem .5rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-field); color: var(--color-text); }
-  input:focus-visible, select:focus-visible, button:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: var(--focus-ring); }
-  button { background: var(--color-surface-raised); cursor: pointer; padding: .35rem .7rem; }
-  button:hover:not(:disabled) { border-color: var(--color-accent); }
-  button:disabled { opacity: .5; cursor: default; }
+  /* The control primitive is global, in tokens.css. Everything here states
+     only what differs from it. */
   input[type='search'], .capture input:first-of-type { flex: 1; min-width: 200px; }
-  .dom { width: 190px; }
+  .dom { width: 280px; flex: 0 0 auto; }
   .check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); flex: 0 0 auto; white-space: nowrap; }
   .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--color-accent); }
   .ro { margin: 6px 0 0; font-size: 11px; color: var(--color-text-muted); }

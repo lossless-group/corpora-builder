@@ -116,6 +116,20 @@ def _page_keys(keys: list[str], offset: int, limit: int) -> list[str]:
     return ordered[offset : offset + limit]
 
 
+def _in_domain(key: str, domain: str) -> bool:
+    """Does `key` belong to `domain`, or to something nested under it?
+
+    Filtering by *domain* rather than by raw key prefix is what keeps the client
+    out of the storage layout. `_domain_of` already strips a leading `live/` and
+    a trailing `sources/`, so the domain `topics/future-of-work` covers both
+    `topics/future-of-work/x.md` and `live/topics/future-of-work/sources/x.md`.
+    The browser previously sent `<domain>/` as a key prefix, which matched the
+    first layout and silently returned nothing for the second.
+    """
+    d = _domain_of(key)
+    return d == domain or d.startswith(domain + "/")
+
+
 def list_sources(
     store: CorpusStore,
     prefix: str = "",
@@ -123,9 +137,12 @@ def list_sources(
     limit: int = 200,
     offset: int = 0,
     bin_store: BinStore | None = None,
+    domain: str = "",
 ) -> Listing:
-    """Every source under `prefix`, newest fetch first."""
+    """Every source under `prefix` (a key prefix) and `domain` (a folder), newest first."""
     all_keys = [k for k in store.list(prefix) if k.endswith(".md")]
+    if domain:
+        all_keys = [k for k in all_keys if _in_domain(k, domain)]
     domains = {_domain_of(k) for k in all_keys}
     total = len(all_keys)
 

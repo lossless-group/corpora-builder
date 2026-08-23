@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SPECS_DIR = REPO_ROOT / "context-v" / "specs"
 RESULTS_PATH = REPO_ROOT / ".spec-results.json"
+APP_RESULTS_PATH = REPO_ROOT / "app" / ".spec-results.json"
 
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -59,6 +61,28 @@ _BOLD, _DIM, _OFF = "\033[1m", "\033[2m", "\033[0m"
 _REDC, _GREENC = "\033[31m", "\033[32m"
 
 
+def run_frontend_tests() -> int:
+    """Run the app's tests so `app/.spec-results.json` is fresh.
+
+    Frontend promises are promises. Before this existed the ledger only saw
+    pytest, so a spec covered by `node --test` would have reported MISSING —
+    and the tempting fix for MISSING is deleting the row, which turns a real
+    promise into no promise at all.
+
+    Absent node, this reports and returns 0 rather than failing: the Python side
+    has to stay runnable on a machine that has never built the frontend.
+    """
+    app = REPO_ROOT / "app"
+    if not (app / "scripts" / "run-tests.mjs").exists():
+        return 0
+    if shutil.which("node") is None:
+        print("  frontend: skipped — node not on PATH")
+        return 0
+    return subprocess.run(
+        [shutil.which("node") or "node", "scripts/run-tests.mjs"], cwd=app
+    ).returncode
+
+
 def run_pytest() -> int:
     """Run the suite so the results file is fresh. Returns pytest's exit code."""
     proc = subprocess.run(
@@ -68,11 +92,11 @@ def run_pytest() -> int:
     return proc.returncode
 
 
-def load_results() -> dict[str, dict]:
-    if not RESULTS_PATH.exists():
+def load_results(path: Path = RESULTS_PATH) -> dict[str, dict]:
+    if not path.exists():
         return {}
     try:
-        return json.loads(RESULTS_PATH.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
 
@@ -107,8 +131,17 @@ def main() -> int:
 
     if not args.no_run:
         run_pytest()
+        run_frontend_tests()
         print()
     results = load_results()
+    # Frontend IDs merge into the same map. The two suites cover disjoint specs,
+    # so a plain update is right; were that ever to stop being true, the collision
+    # should be loud rather than silently resolved by ordering.
+    for spec_id, entry in load_results(APP_RESULTS_PATH).items():
+        if spec_id in results:
+            print(f"  [!] {spec_id} is claimed by BOTH suites — frontend result ignored")
+            continue
+        results[spec_id] = entry
 
     totals = {GREEN: 0, RED: 0, MISSING: 0, RETIRED: 0, GATED: 0}
     saw_any = False

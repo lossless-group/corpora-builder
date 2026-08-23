@@ -118,6 +118,12 @@ components:
     borderColor: "{colors.graphite-800}"
     rounded: "{rounded.md}"
     padding: "0.35rem 0.7rem"
+  domain-option:
+    backgroundColor: "{colors.graphite-1000}"
+    borderColor: "{colors.magenta-electric}"
+    rounded: "{rounded.sm}"
+    padding: "3px 7px"
+    typography: "{typography.body}"
   viewer:
     backgroundColor: "{colors.graphite-700}"
     borderColor: "{colors.graphite-600}"
@@ -343,6 +349,24 @@ instrument. Inputs sit on `--color-field`, buttons on `--color-surface-raised`.
 Hover moves the border to the accent. Focus is `--focus-ring` — a 2px background
 ring plus a 3px accent ring as `box-shadow`, with a real `outline` restored under
 `forced-colors`, where `box-shadow` does not survive.
+
+### Domain combo
+
+reach-edu has **112 domain folders and 66 of them are `funders/`**, which is a
+`<select>` you scroll rather than one you use. The replacement is a combobox:
+type any near-match — `Ascendium Education` finds `funders/ascendium-education` —
+and Backspace walks *back up the path a segment at a time* rather than a
+character at a time.
+
+Two visual rules carry the weight. **The shared prefix is dimmed, not removed**:
+sixty-six rows that all begin `funders/` at full contrast is the noise; deleting
+the prefix entirely would lose the fact that these are paths. And **the active
+row is marked by its border**, like every other hover state here, not by a fill.
+
+Ordering is depth then alphabetical. It was briefly shortest-path-first, which is
+right across depths and nonsense within one — rendered, it listed *ecmc,
+blackrock, bridgespan, judy-dimon* and looked random. Full note in
+`context-v/specs/Domain-Navigation.md`.
 
 ### Viewer
 
