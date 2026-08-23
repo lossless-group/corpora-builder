@@ -350,6 +350,38 @@ Hover moves the border to the accent. Focus is `--focus-ring` — a 2px backgrou
 ring plus a 3px accent ring as `box-shadow`, with a real `outline` restored under
 `forced-colors`, where `box-shadow` does not survive.
 
+### The mark
+
+A leaning stack of paper seen from the side, chosen from
+`src-tauri/icons/drafts/round2` as `24-lean`. The lean is the point: the brief
+was *"a pile of paper that's a bit not straightly aligned"*, and an upright stack
+is a ream rather than a pile somebody has been working through. It stands where
+the wordmark was, with `corpora` kept as the accessible label.
+
+**Two line counts, one silhouette.** Fifteen edges is right at icon size and mud
+in a header — at 26px they land about 1.3px apart and merge into a grey block. The
+small cut is a subsample of the same jittered curve, so outline, lean and top face
+are identical and only density changes. A logo needing a small cut is ordinary; a
+logo illegible at the size it is actually used is not.
+
+**Each mode gets a treatment, not a tint.** `--mark-sheet`, `--mark-sheet-deep`,
+`--mark-top`, `--mark-top-fill` and `--mark-glow` are set per mode:
+
+| | sheets | top sheet | glow |
+|---|---|---|---|
+| dark | cool paper | electric magenta | none |
+| light | full ink | deep magenta | none |
+| vibrant | halo → loud magenta | loud magenta | a real drop-shadow |
+
+Light is a genuine re-cut rather than a token swap. **Outline art inverts badly**:
+white-on-dark becomes grey-on-white and loses most of its contrast, so the sheets
+go to full ink instead.
+
+**The packaged icon cannot do any of this.** A `.icns` is bitmaps with no theme
+awareness, so it gets one baked palette — `mark-dark.svg` is the one to cut from.
+The favicon is the exception: `static/favicon.svg` carries both palettes and picks
+with `prefers-color-scheme`, which an SVG favicon can do and a `.ico` cannot.
+
 ### Domain combo
 
 reach-edu has **112 domain folders and 66 of them are `funders/`**, which is a

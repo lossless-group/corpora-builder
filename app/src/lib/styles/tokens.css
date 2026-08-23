@@ -174,6 +174,16 @@
   --fx-card-shadow:       0 1px 3px color-mix(in srgb, var(--color__shadow-black) 35%, transparent);
   --fx-glow-opacity:      0.25;
   --fx-scrim:             color-mix(in srgb, var(--color__shadow-black) 62%, transparent);
+
+  /* ── The corpora mark ────────────────────────────────────────────────
+     The stack reads differently in each mode on purpose — the operator asked
+     for it to POP per mode, not merely survive. Dark: cool paper, magenta top
+     sheet, no glow. */
+  --mark-sheet:      var(--color__mist-100);
+  --mark-sheet-deep: var(--color__mist-400);
+  --mark-top:        var(--color__magenta-electric);
+  --mark-top-fill:   var(--color__graphite-1000);
+  --mark-glow:       none;
 }
 
 /* LIGHT */
@@ -203,6 +213,15 @@
   --fx-card-shadow:       0 1px 3px color-mix(in srgb, var(--color__shadow-ink) 8%, transparent);
   --fx-glow-opacity:      0.08;
   --fx-scrim:             color-mix(in srgb, var(--color__shadow-ink) 38%, transparent);
+
+  /* Light: ink on paper. Outline art inverts badly if you only swap tokens —
+     white-on-dark becomes grey-on-white and loses most of its contrast — so the
+     sheets go to full ink and the top sheet takes the deep accent. */
+  --mark-sheet:      var(--color__ink-900);
+  --mark-sheet-deep: var(--color__ink-500);
+  --mark-top:        var(--color__magenta-deep);
+  --mark-top-fill:   var(--color__paper-0);
+  --mark-glow:       none;
 }
 
 /* VIBRANT — dark-based, louder accent, real glow. */
@@ -232,6 +251,14 @@
   --fx-card-shadow:       0 0 24px color-mix(in srgb, var(--color__magenta-loud) 12%, transparent);
   --fx-glow-opacity:      0.5;
   --fx-scrim:             color-mix(in srgb, var(--color__shadow-black) 68%, transparent);
+
+  /* Vibrant: the loud accent on every sheet, with a real glow. This is the mode
+     that exists to be louder, so the mark is the thing that says so. */
+  --mark-sheet:      var(--color__halo-100);
+  --mark-sheet-deep: var(--color__magenta-loud);
+  --mark-top:        var(--color__magenta-loud);
+  --mark-top-fill:   var(--color__void-1000);
+  --mark-glow:       drop-shadow(0 0 3px color-mix(in srgb, var(--color__magenta-loud) 70%, transparent));
 }
 
 /* ═══ Base ═══════════════════════════════════════════════════════════════ */

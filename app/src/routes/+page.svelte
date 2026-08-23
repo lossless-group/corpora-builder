@@ -4,6 +4,7 @@
   import CorpusTree from '$lib/components/CorpusTree.svelte';
   import WorkspaceMenu from '$lib/components/WorkspaceMenu.svelte';
   import ModeToggle from '$lib/components/ModeToggle.svelte';
+  import CorporaMark from '$lib/components/CorporaMark.svelte';
   import type { TreeNode, FocusDef } from '$lib/api';
   import { Latest } from '$lib/latest';
   import { SvelteSet } from 'svelte/reactivity';
@@ -219,7 +220,9 @@
 
 <header>
   <div class="bar">
-    <h1>corpora</h1>
+    <!-- The mark stands in for the wordmark; the name stays as the accessible
+         label, so a screen reader still hears "corpora". -->
+    <h1><CorporaMark size={26} /></h1>
     <input bind:value={search} oninput={debounced} type="search" placeholder="Search title, excerpt, or path…" />
     <div class="dom">
       <DomainCombo
@@ -451,7 +454,7 @@
      cluster rather than as the tail of the search row. */
   .chrome { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
   .capture { margin-top: 8px; }
-  h1 { font-size: 13px; margin: 0; font-weight: 700; letter-spacing: 0; }
+  h1 { font-size: 13px; margin: 0; font-weight: 700; letter-spacing: 0; display: flex; align-items: center; }
   h1 span { color: var(--color-text-muted); font-weight: 400; }
 
   /* The control primitive is global, in tokens.css. Everything here states
