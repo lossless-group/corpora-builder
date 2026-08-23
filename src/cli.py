@@ -149,6 +149,46 @@ def cmd_ls(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fetch(args: argparse.Namespace) -> int:
+    """`corpora fetch` — bring a binary back from `bin/` to a local path.
+
+    The door that makes removing binaries from a repo safe. Without it, "the
+    bytes are in R2" is true and useless. See
+    `context-v/specs/Binary-Ingest-And-Bin-Store.md` Behaviour 8 — absent is a
+    state with an affordance, not an error.
+    """
+    import re
+
+    from src.binary.store import BinStore
+
+    store, _ = build_store(load_env(), args.local)
+    binst = BinStore(store)
+
+    key = args.key
+    if not key.startswith("bin/"):
+        # A wrapper path was given instead of a key — read the pointer off it.
+        try:
+            text = Path(key).read_text(errors="replace")
+        except OSError:
+            console.print(f"[red]not a bin/ key and not a readable file:[/] {key}")
+            return 1
+        m = re.search(r"binary_key:\s*(\S+)", text)
+        if not m:
+            console.print(f"[red]no binary_key in[/] {key}")
+            return 1
+        key = m.group(1)
+
+    dest = Path(args.out) if args.out else Path(key.rsplit("/", 1)[-1])
+    try:
+        data = binst.remote.read(key)
+    except Exception as err:  # noqa: BLE001 — the message is the product here
+        console.print(f"[red]could not fetch[/] {key}: {err}")
+        return 1
+    dest.write_bytes(data)
+    console.print(f"[green]{len(data):,} bytes[/] -> {dest}")
+    return 0
+
+
 def cmd_changes(args: argparse.Namespace) -> int:
     """`corpora changes` — what changed in a corpus, and why.
 
@@ -240,6 +280,12 @@ def main(argv: list[str] | None = None) -> int:
         help="enable capture from the UI (off by default — the first target was a client corpus)",
     )
     serve.set_defaults(func=cmd_serve)
+
+    fetch = sub.add_parser("fetch", help="bring a binary back from bin/")
+    fetch.add_argument("key", help="a bin/ key, or the path of a wrapper .md that names one")
+    fetch.add_argument("--out", help="where to write it (default: the key's filename)")
+    fetch.add_argument("--local", default="", help="use a local corpus dir instead of R2")
+    fetch.set_defaults(func=cmd_fetch)
 
     changes = sub.add_parser("changes", help="what changed in the corpus, and why")
     changes.add_argument("--repo", default=".", help="git repository holding the corpus")
