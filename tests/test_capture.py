@@ -353,3 +353,44 @@ def test_a_new_source_states_its_own_status(store: LocalFsStore) -> None:
     raw = store.read(result.path).decode()
     assert "status: candidate" in raw
     assert "content_pulled: false" in raw
+
+
+@pytest.mark.spec("BROWSE-08")
+def test_the_excerpt_never_repeats_the_title() -> None:
+    """Seen across reach-edu, and visible the moment results were rendered under
+    the search box: every card read
+
+        Zeffy | 100% Free Fundraising Software
+        Title: Zeffy | 100% Free Fundraising Software
+
+    A body captured before `parse_jina_preamble` existed still carries Jina's
+    `Key: value` header, and `Title: <the title>` clears the 40-character bar
+    that is supposed to separate prose from a stray caption. An excerpt that
+    repeats the title is worse than no excerpt: it spends the one line that
+    answers "what is this" on the answer already given above it.
+    """
+    from src.model.text import prose_excerpt
+
+    body = (
+        "Title: Zeffy | 100% Free Fundraising Software\n"
+        "URL Source: https://www.zeffy.com/\n"
+        "Published Time: 2026-01-01\n"
+        "Markdown Content:\n"
+        "Zeffy is the only fundraising platform that is 100% free for nonprofits, "
+        "covering its costs with optional donor tips.\n"
+    )
+
+    excerpt = prose_excerpt(body, 240)
+
+    assert "Title:" not in excerpt
+    assert "URL Source" not in excerpt
+    assert excerpt.startswith("Zeffy is the only fundraising platform")
+
+    # ...and a colon in real prose is still real prose.
+    assert prose_excerpt(
+        "Education matters: here is the long-form reason it matters to everyone.\n", 240
+    ).startswith("Education matters:")
+
+    # A body that is nothing BUT preamble yields nothing, which renders as
+    # absent — honest, and better than an echo.
+    assert prose_excerpt("Title: A Thing\nURL Source: https://example.org/a\n", 240) == ""

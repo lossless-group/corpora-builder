@@ -32,6 +32,13 @@
   let panelOpen = $state(false);
   let searchBox = $state<HTMLDivElement | undefined>(undefined);
 
+  // True from the keystroke until THIS query's rows land. Without it the panel
+  // opens on the rows it happens to be holding — which, on an unindexed corpus
+  // where a search reads every file, is the unfiltered list for several
+  // seconds. Screenshotted mid-flight it is indistinguishable from a working
+  // search returning wrong answers, which is the worst thing a search can do.
+  let searching = $state(false);
+
   function closePanel() {
     panelOpen = false;
   }
@@ -236,7 +243,7 @@
   async function load() {
     if (ranked) {
       const data = await inflight.run(() => api.sources(domainFilter, '', focus, POOL_LIMIT));
-      if (!data) return; // superseded — the operator has moved on
+      if (!data) return; // superseded — a newer request owns `searching` now
       pool = data.rows;
       corpusTotal = data.corpus_total;
       indexStale = data.index_stale;
@@ -262,6 +269,7 @@
     total = data.total;
     corpusTotal = data.corpus_total;
     indexStale = data.index_stale;
+    searching = false;
   }
 
   /** Rank the pool with Pagefind. No request for the rows — they are already
@@ -272,6 +280,7 @@
       marks = new Map();
       rows = pool.slice(0, PAGE);
       total = pool.length;
+      searching = false;
       return;
     }
     const page = await ranked.page(search, focus, shown);
@@ -290,6 +299,7 @@
     marks = next;
     rows = hits;
     total = page.total;
+    searching = false;
   }
 
   /** Chips grouped by their declared type, so a row of them says what it IS.
@@ -341,6 +351,7 @@
   function debounced() {
     clearTimeout(timer);
     panelOpen = search.trim().length > 0;
+    searching = panelOpen;
     shown = RANKED_PAGE; // a new query starts at the top again
     timer = setTimeout(
       () => (ranked ? applySearch() : load()),
@@ -413,6 +424,7 @@
           {rows}
           {marks}
           {total}
+          {searching}
           ranked={!!ranked}
           {tagLabel}
           onpick={view}

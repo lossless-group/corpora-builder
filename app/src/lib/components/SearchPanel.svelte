@@ -26,6 +26,10 @@
      *  the corpus has no search index; the row's own excerpt stands in. */
     marks: Map<string, string>;
     total: number;
+    /** This query's rows have not landed yet. The rows prop still holds the
+     *  PREVIOUS answer, and showing it would be a confident wrong answer —
+     *  which on an unindexed corpus lasts for seconds, not milliseconds. */
+    searching?: boolean;
     /** How many the panel shows before deferring to the list below. */
     limit?: number;
     ranked: boolean;
@@ -37,6 +41,7 @@
     rows,
     marks,
     total,
+    searching = false,
     limit = 8,
     ranked,
     tagLabel,
@@ -57,7 +62,9 @@
 </script>
 
 <div class="panel" role="listbox" aria-label="Search results">
-  {#if !shown.length}
+  {#if searching}
+    <p class="empty">Searching…</p>
+  {:else if !shown.length}
     <p class="empty">Nothing matches.</p>
   {:else}
     <ul>
