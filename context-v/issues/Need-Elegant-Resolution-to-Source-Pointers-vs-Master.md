@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.3.0
+at_semantic_version: 0.0.4.0
 status: Open — Stopgap Proposed, Not Built
 site_uuid: 666ec300-f412-4ed9-893a-099cc67e6938
 hex_code: xu3mtx
@@ -20,6 +20,8 @@ tags:
   - Source-Curation
   - SurrealDB
   - Scoped-Corpora
+  - Augment-It
+  - Cross-Repo
 ---
 
 # Need an Elegant Resolution to Source Pointers vs. Master
@@ -216,6 +218,28 @@ Three boxes, one question each:
 | `live/gatedbox/` | did the fetch produce anything to decide about? | retry, a different fetcher, a manual paste |
 | `live/multibox/` | where is the text? | nothing — it is the answer |
 
+#### It half-exists already — as `inbox/gated/`
+
+Correcting this issue's own first reading: `gated` is not only a frontmatter
+value. **`live/inbox/gated/` is a real folder**, in augment-it at
+`clients/reach-edu/corpus/inbox/gated/` and mirrored to R2. Alongside it sits
+`inbox/_triage-runs/`. The R2 layout today:
+
+| under `live/inbox/` | files |
+|---|---|
+| flat — awaiting triage | 80 |
+| `gated/` | 14 |
+| `_triage-runs/` | 1 |
+
+augment-it's triage prompt already encodes the concept too
+(`services/workspace/src/chat.ts`): *"every capture leaves inbox/ for a bucket, a
+domain, a stream, **gated**, or a deliberate park"*, and *"Fetch-blocked capture
+(403/CAPTCHA/paywall)? → gated, not discarded: the URL is still wanted."*
+
+So the proposal is not "invent a gatedbox" — it is **promote the existing one out
+of the inbox**. As a child of `inbox/` it still counts as inbox, which is exactly
+why the inbox reads as 95 when only 80 of those are decisions.
+
 #### Gating is not only an inbox state
 
 The finding that makes this more than tidying. Scanning all 832 sources for
@@ -223,7 +247,7 @@ fetch failures:
 
 | where the blocked fetches are | count |
 |---|---|
-| `live/inbox/`, marked `gated` | 8 |
+| `live/inbox/gated/` — correctly parked | 8 of the 14 there |
 | **filed inside a domain folder** | **7** |
 | `live/_discarded/` | 1 |
 
@@ -296,6 +320,51 @@ that an agent can cite and a reader cannot verify.
 
 **Writes into a client corpus.** Steps 2–5 mutate reach-edu and are not
 unattended work.
+
+## This has to land in augment-it too
+
+**corpora-builder and augment-it write the same corpus and are separate repos.**
+The intent is that corpora-builder eventually becomes a submodule of augment-it;
+until then any convention agreed here has to be **implemented twice, on purpose**,
+and this section is the checklist so the second implementation is not discovered
+later by divergence.
+
+augment-it is on `rebuild/turbo-rsbuild`, and it holds its own on-disk copy of
+this corpus at `clients/reach-edu/corpus/` — the third diverging copy the
+SurrealDB spec's own open questions name (laptop, Railway volume, git).
+
+### The surface that would change
+
+| file | what it owns |
+|---|---|
+| `services/content-ingest/src/corpus.ts` | **the whole path model** — `addToInbox` (writes `corpus/inbox/`, stamps `inbox_status: "pending"`), `addToCorpus`, `addSourceFile` landing at `<type-plural>/<slug>/sources/`, `addDomainIndex`, `retypeDomainFiles` |
+| `services/content-ingest/src/promote.ts` · `handlers.ts` · `binary-asset.ts` | promotion out of the inbox, and the PDF sibling that has to move with a source |
+| `services/workspace/src/chat.ts` | the triage prompt — already names `gated` as a destination |
+| `scripts/jina-fetch-mega-gifts-sources.mjs` | writes `inbox_status: gated` and lands files in `inbox/gated/` |
+
+### Two divergences that already exist
+
+1. **Different roots.** augment-it writes
+   `clients/<client>/corpus/<type-plural>/<slug>/sources/…` (from `CLIENTS_ROOT`,
+   default `/clients`); corpora-builder writes `live/<type>/<slug>/sources/…`.
+   `_domain_of` already strips a leading `live/` to reconcile them.
+   **Consequence:** the boxes must be specified **relative to the corpus root** —
+   *"a sibling of `inbox/`"* — never as literal keys, or `live/multibox/` and
+   `corpus/multibox/` become two different conventions with one name.
+2. **Different ways to map a type to a folder.** augment-it uses a
+   `DOMAIN_FOLDERS` table with a `` `${type}s` `` fallback; corpora-builder
+   refuses that rule and reads `type`/`slug` out of each folder's own `index.md`,
+   because the fallback is what `thesis`/`theses` breaks. Both work today only
+   because the table happens to cover every type in use. A new box does not have
+   to care — but a new *domain type* does, and that is the same class of bug.
+
+### The consistency rule while they are separate
+
+Whatever is agreed here lands as **spec first, in one place, referenced by both**
+— this issue and `Strategy-Focus.md` on this side, and the storage spec on
+augment-it's. Then two implementations against one written contract, rather than
+two implementations that agree by memory. A convention only present in code is
+one that diverges the first time either repo is touched alone.
 
 ## What would make this urgent
 
