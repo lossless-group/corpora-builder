@@ -21,6 +21,7 @@ from pathlib import Path
 
 from src.binary.keys import BinaryRef, sha256_of
 from src.binary.optimize import OptimizeResult, optimize_pdf
+from src.binary.pointer import Pointer, apply_pointer, has_pointer_for
 from src.binary.store import BinStore
 
 
@@ -68,26 +69,8 @@ def ingest_binary(
 
 
 def _wrapper_for(path: Path) -> Path:
-    """The markdown that describes this binary — same stem, `.md` suffix.
-
-    The corpus convention since capture began: `report.pdf` is described by
-    `report.md` beside it. That pairing is what makes a migration able to write
-    the pointer at all.
-    """
+    """The markdown that describes this binary — same stem, `.md` suffix."""
     return path.with_suffix(".md")
-
-
-def _already_mapped(wrapper: Path, source_sha256: str) -> bool:
-    """Whether this wrapper already points at the right object (Behaviour 13).
-
-    Cheap and deliberately textual: parsing every wrapper's YAML to answer a
-    yes/no question is the difference between a migration that re-runs in a
-    second and one that re-runs in three minutes.
-    """
-    if not wrapper.is_file():
-        return False
-    text = wrapper.read_text(errors="replace")
-    return "binary_key:" in text and source_sha256 in text
 
 
 def migrate_tree(
@@ -100,54 +83,51 @@ def migrate_tree(
 ) -> list[IngestResult]:
     """File every binary under `root` into `bin/` **and point its wrapper at it**.
 
-    Storing the object and writing the pointer are one operation (Behaviour 12).
-    An object in `bin/` that no wrapper references is garbage rather than
-    progress — and because optimization changes identity as well as bytes, an
-    unreferenced optimized object cannot be traced back to its source. That is
-    not hypothetical: it happened on 2026-08-22, see
-    `context-v/issues/Orphaned-Bin-Objects-From-A-Half-Migration.md`.
+    Three rules, each learned the hard way on 2026-08-22:
 
-    **Deletes nothing.** Removing originals is a separate, explicitly confirmed
-    step per the Autonomy-Gates RED list (Behaviour 11).
+    1. **Object and pointer are one operation** (Behaviour 12). An unreferenced
+       optimized object cannot be traced back to its source.
+    2. **Both copies are stored** (Behaviour 14). The optimized artifact is what
+       you fetch; the publisher's original stays retrievable at its own key,
+       because "usually no use for it, but every once in a while there is" only
+       works if it is actually there.
+    3. **The wrapper is patched, not re-rendered** (`src/binary/pointer.py`).
+       Re-serializing a real wrapper produced 250 discrepancies across 34 files.
 
-    **Skips what is already mapped** (Behaviour 13), so a second run neither
-    re-optimizes nor re-uploads.
+    **Deletes nothing.** Skips anything already mapped, so a second run is free.
     """
     out: list[IngestResult] = []
     for path in sorted(root.rglob("*")):
         if not (path.is_file() and path.suffix.lower() in suffixes):
             continue
         data = path.read_bytes()
+        source_digest = sha256_of(data)
         wrapper = _wrapper_for(path)
-        if _already_mapped(wrapper, sha256_of(data)):
+
+        if wrapper.is_file() and has_pointer_for(
+            wrapper.read_text(errors="replace"), source_digest
+        ):
             continue
+
         result = ingest_binary(store, data, ext=path.suffix, optimize=optimize, source_path=path)
+
+        # Rule 2 — the original is retrievable at its own content key, whether or
+        # not it is the working copy.
+        if result.ref.optimized:
+            store.put(BinaryRef.verbatim(data, ext=path.suffix), data)
+
         if write_wrappers and wrapper.is_file():
-            _write_pointer(wrapper, result.ref)
+            patched = apply_pointer(
+                wrapper.read_text(errors="replace"),
+                Pointer(
+                    binary_key=result.ref.key,
+                    optimized=result.ref.optimized,
+                    optimized_sha256=result.ref.sha256 if result.ref.optimized else "",
+                    optimized_bytes=result.ref.size if result.ref.optimized else 0,
+                    source_sha256=result.ref.source_sha256,
+                    source_bytes=result.ref.source_size,
+                ),
+            )
+            wrapper.write_text(patched)
         out.append(result)
     return out
-
-
-def _write_pointer(wrapper: Path, ref: BinaryRef) -> None:
-    """Record the pointer on an existing wrapper, preserving everything else.
-
-    Parsed and re-rendered through `SourceFile` rather than patched textually,
-    so field order and unknown keys survive — the frontmatter contract belongs
-    to that model, not to this function.
-    """
-    from src.model import BinaryAsset, SourceFile
-
-    source = SourceFile.parse(wrapper.read_text(errors="replace"))
-    existing = source.binary_asset
-    source.binary_asset = BinaryAsset(
-        filename=existing.filename if existing else wrapper.with_suffix(".pdf").name,
-        bytes=ref.size,
-        sha256=ref.sha256,
-        downloaded_at=existing.downloaded_at if existing else "",
-        download_status=existing.download_status if existing else "ok",
-        binary_key=ref.key,
-        source_sha256=ref.source_sha256,
-        source_bytes=ref.source_size,
-        optimized=ref.optimized,
-    )
-    wrapper.write_text(source.render())

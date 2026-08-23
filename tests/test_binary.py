@@ -374,12 +374,13 @@ def test_migration_writes_the_pointer_onto_each_wrapper_and_deletes_nothing(
     ref = results[0].ref
     assert binstore.remote.exists(ref.key)
 
-    written = SourceFile.parse(wrapper.read_text()).binary_asset
-    assert written is not None
-    assert written.binary_key == ref.key
-    assert written.sha256 == ref.sha256 and written.bytes == ref.size
-    assert written.source_sha256 == ref.source_sha256
-    assert written.source_bytes == ref.source_size
+    text = wrapper.read_text()
+    # `sha256` keeps its established meaning: what the publisher served. The
+    # stored artifact gets its own names. Redefining an existing key is the
+    # mistake this whole module exists to prevent.
+    assert f"sha256: {ref.source_sha256}" in text
+    assert f"binary_key: {ref.key}" in text
+    assert "optimized: false" in text
     assert pdf.is_file()  # nothing deleted — Behaviour 11
 
 
@@ -408,7 +409,9 @@ def test_migration_is_idempotent_on_the_optimized_path(binstore: BinStore, tmp_p
 
     assert len(first) == 1 and len(second) == 0  # nothing left to do
     assert calls["n"] == after_first  # the optimizer was NOT invoked again
-    assert len(binstore.remote.list("bin/")) == 1
+    # two objects: the optimized working copy AND the publisher's original,
+    # because "occasionally you need the original" only works if it is there
+    assert len(binstore.remote.list("bin/")) == 2
 
 
 @pytest.mark.spec("BIN-22")
@@ -474,6 +477,60 @@ def test_a_changed_source_is_re_ingested_and_the_pointer_updated(
     second_key = SourceFile.parse(wrapper.read_text()).binary_asset.binary_key
     assert second_key != first_key
     assert binstore.remote.exists(second_key)
+
+
+@pytest.mark.spec("BIN-25")
+def test_patching_a_wrapper_changes_only_the_lines_it_adds(tmp_path: Path) -> None:
+    """The gate. Re-serializing a real wrapper produced 250 discrepancies across
+    34 files; this asserts the inverse property holds instead."""
+    from src.binary.pointer import Pointer, apply_pointer, strip_pointer
+
+    original = (
+        "---\n"
+        'content_uuid: "019eec87-faaa-70c2-8697-89e2233dd29f"\n'
+        'title: "ED559688.pdf"\n'
+        "fetched_at: 2026-06-10T04:17:57.065Z\n"
+        "binary_asset:\n"
+        '  filename: "a.pdf"\n'
+        '  content_type: "application/pdf"\n'
+        "  size_bytes: 729490\n"
+        '  sha256: "' + "3" * 64 + '"\n'
+        "extra_metadata:\n"
+        '  jina_status: "200"\n'
+        "---\n\nbody text\n"
+    )
+    p = Pointer(
+        binary_key="bin/aa/" + "a" * 64 + ".pdf",
+        optimized=True,
+        optimized_sha256="b" * 64,
+        optimized_bytes=123,
+    )
+
+    patched = apply_pointer(original, p)
+
+    assert strip_pointer(patched) == original  # nothing else moved
+    assert 'content_type: "application/pdf"' in patched  # nested key survives
+    assert 'sha256: "' + "3" * 64 + '"' in patched  # source hash NOT redefined
+    assert apply_pointer(patched, p) == patched  # idempotent
+
+
+@pytest.mark.spec("BIN-26")
+def test_the_publishers_original_is_stored_alongside_the_optimized_copy(
+    binstore: BinStore, tmp_path: Path
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    source = fake_pdf(padding=40_000)
+    (corpus / "a.pdf").write_bytes(source)
+    (corpus / "a.md").write_text("---\nurl: https://example.org/a.pdf\n---\n")
+
+    migrate_tree_with(binstore, corpus, shrinker(fake_pdf(padding=1_000)))
+
+    keys = binstore.remote.list("bin/")
+    assert len(keys) == 2
+    assert any(sha256_of(source) in k for k in keys)  # the original is retrievable
+    text = (corpus / "a.md").read_text()
+    assert f"sha256: {sha256_of(source)}" in text
 
 
 # ---------------------------------------------------------------------------

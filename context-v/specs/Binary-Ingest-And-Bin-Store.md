@@ -9,7 +9,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.2.0
+semantic_version: 0.0.3.0
 status: Draft
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]]"
 tags:
@@ -157,7 +157,31 @@ existing binaries.
     optimized object cannot be traced back to its source. Migration writes the
     wrapper in the same pass, or it has not migrated anything.
 
-13. **Migration is idempotent by memory, not only by re-derivation.** A file
+13. **Both copies are stored.** The optimized artifact is the working copy and
+    what `binary_key` points at; the publisher's original stays retrievable at
+    its own content key. *Operator, 2026-08-22: "there's usually no use for it.
+    But every once in a while there might be a need to access the original."*
+    That only holds if it is actually there. Cost is the sum of both, which the
+    local cache does not pay — a fetch takes the working copy unless asked
+    otherwise.
+
+14. **A wrapper is patched, never re-rendered.** `SourceFile.parse()` →
+    `render()` is a re-serialization: it reorders keys, normalises quoting,
+    coerces timestamps, and drops nested keys the dataclass does not model. Run
+    over 34 real wrappers it produced **250 discrepancies**, including dropping
+    `binary_asset.content_type` and `size_bytes`. Migration edits the lines it
+    means to edit and leaves every other byte alone, and the property is
+    checkable, and the check is the gate: **the diff is additions only.** Across
+    the real 34 that measured 119 lines added, 0 removed, 0 pre-existing values
+    changed, and every body byte-identical.
+
+15. **An existing key is never redefined.** `sha256`, `size_bytes` and
+    `content_type` keep the meanings the corpus already gave them — the
+    publisher's file. The optimized artifact gets *new* names,
+    `optimized_sha256` / `optimized_bytes`. A key whose meaning silently changes
+    is worse than a missing key: nothing can tell which era a file is from.
+
+16. **Migration is idempotent by memory, not only by re-derivation.** A file
     whose sibling wrapper already carries a `binary_key` with a matching
     `source_sha256` is **skipped** — not re-read, not re-optimized, not
     re-uploaded. Determinism (Behaviour 2) makes re-derivation *safe*; this rule
@@ -192,6 +216,8 @@ existing binaries.
 | `BIN-22` | Given the same PDF optimized twice by the configured compressor, when both outputs are hashed, then the digests are identical — optimization is deterministic |
 | `BIN-23` | Given a binary whose wrapper already records a `binary_key` for its current `source_sha256`, when migration runs, then that file is skipped and the compressor is never called for it |
 | `BIN-24` | Given a binary whose wrapper records a `binary_key` for a **different** `source_sha256`, when migration runs, then it is re-ingested and the wrapper is updated to the new key |
+| `BIN-25` | Given a real-shaped wrapper, when a pointer is applied, then the change is **additions only** — no pre-existing line is removed or rewritten, nested keys such as `content_type` survive, `sha256` is not redefined, and re-applying changes nothing |
+| `BIN-26` | Given an optimized ingest during migration, when the store is listed, then **both** the optimized working copy **and** the publisher's original are present, each at its own content key |
 
 **Not in the automated suite, run deliberately:**
 
