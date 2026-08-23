@@ -10,8 +10,8 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.1.0
-status: Open
+at_semantic_version: 0.0.2.0
+status: Open — Stopgap Proposed, Not Built
 site_uuid: 666ec300-f412-4ed9-893a-099cc67e6938
 hex_code: xu3mtx
 tags:
@@ -135,6 +135,90 @@ that is missing is the half that puts content inside a scope.
 
 Option 4 is the one this repo already has machinery for, and it is the only one
 that keeps "the corpus is files you can read without our software" true.
+
+## Proposed stopgap — a multibox (operator, 2026-08-23)
+
+> Add a **multibox** alongside the inbox, where the body — the master — goes.
+> Update the pointers to reference the multibox. The inbox goes back to meaning
+> exactly one thing: **untriaged**.
+
+This separates two ideas currently sharing one folder: *"nobody has looked at
+this yet"* and *"this is where the text lives."* `live/inbox/` holds 95 files
+today, 80 `pending` and 14 `gated`, and the gated ones are failed fetches
+(Cloudflare interstitials, `access-denied`) — not work awaiting a decision. The
+inbox is doing three jobs. This gives it one.
+
+It also does something none of the four options above do: it makes a pointer
+**self-describing**. `reference_of` is specified and on 28 files; a `body_key`
+that every pointer carries removes the guesswork about which copy is which.
+
+### The key must be `normalized_url` — this is settled by the data
+
+The multibox needs one filename per source, which means the corpus needs an
+identity. Measured 2026-08-23 across the 737 filed sources:
+
+| candidate key | coverage | verdict |
+|---|---|---|
+| basename | 649 distinct for 737 files | **no** — 36 basenames mean more than one source |
+| `source_uuid` | 241 / 737 | **no** — a third of the corpus has none |
+| `normalized_url` | 226 today, **737 after backfill** | **yes** |
+
+**Every filed source carries a `url:`.** All 511 without a `normalized_url` are
+derivable from it with **zero network calls**, by the `normalize_url` already in
+`src/model/urls.py`. That backfill is the real first step, and it is mechanical.
+
+Basename is not merely lossy, it is *wrong*: `2026-06-10_just-a-moment.md`
+appears in four funder folders and those are four **different** blocked fetches
+that happen to share Cloudflare's title. Keyed by basename a migration would
+merge four distinct failures into one body.
+
+After the backfill:
+
+| | |
+|---|---|
+| distinct identities | **637** |
+| filed in 1 folder | 557 |
+| filed in 2 | 62 |
+| filed in 3 | 17 |
+| filed in 5 | 1 |
+
+### What it changes elsewhere
+
+- **`live/multibox/` must not count as a domain.** `_domain_of` would report
+  `multibox`, putting it in the combobox and inflating the source count by 637.
+  It needs the same treatment `index/` has — excluded from the *listing*, but
+  **kept in the Files tree**, because unlike a derived cache the bodies are the
+  operator's own content and a client asking where their text went deserves to
+  see it.
+- **The search manifest should carry `body_key`**, so a scoped read knows where
+  the text is without opening every pointer.
+- **Search gets substantially better, for the first time.** Today the index sees
+  a title and ~240 characters of lede, because that is all a pointer holds. With
+  bodies in one place the builder can index the actual text. This is the largest
+  single upside and it is a side effect, not the goal.
+
+### Open before building
+
+1. **Filename shape.** `<slug>--<sha8-of-normalized-url>.md` stays readable and
+   is collision-proof; a bare digest is neither. `source_filename(...)` already
+   takes a `taken` set and could do this without a new convention.
+2. **Do single-filing sources move too?** Moving all 637 means "a filed source
+   is always a pointer" — one rule, one shape. Leaving the 557 in place means
+   the answer to *"where is the body"* is conditional, and gaining a second
+   filing later mutates the first. **Recommend: all of them.**
+3. **Do not promote the failures.** Five `just-a-moment` files and the 14 gated
+   inbox entries are blocked fetches, not text.
+
+### Migration, in order
+
+1. Backfill `normalized_url` on 511 filed sources. No network. Reversible.
+2. Create `live/multibox/`; move the 75 inbox bodies into it; stamp `body_key`
+   on every pointer sharing that identity.
+3. Flip those inbox files to triaged, or delete them per the 2026-07-25 ruling.
+4. `live/inbox/` now means untriaged, and nothing else.
+
+**Writes into a client corpus.** Steps 1–3 mutate reach-edu and are not
+unattended work.
 
 ## What would make this urgent
 
