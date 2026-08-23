@@ -3,14 +3,14 @@ title: "Strategy Focus"
 lede: "A strategy chip narrows the list and compounds with search. The corpus count rides alongside, so a subset always says what it is a subset of."
 publish: true
 date_created: 2026-08-22
-date_modified: 2026-08-22
+date_modified: 2026-08-23
 date_authored_initial_draft: 2026-08-22
-date_authored_current_draft: 2026-08-22
+date_authored_current_draft: 2026-08-23
 authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.1.0
+at_semantic_version: 0.0.2.0
 status: Draft
 site_uuid: 2e7b4c96-8a01-4d3f-b25e-6c9f0a17d834
 hex_code: t8pv2c
@@ -109,24 +109,24 @@ the folder is wherever the `index.md` is, at any depth.
 
 A folder with no `index.md` is not a focus. Nothing is invented for it.
 
-### 4. Narrowing happens on the key, except where a read is already paid for
+### 4. Narrowing happens on the row, once a manifest exists
 
-A plain page load narrows on the key, so it costs no extra reads — the same trick
-`list_domains` and the corpus tree use.
+**Revised 2026-08-23.** This section used to describe a gap and name its fix. The
+fix shipped: [[Search-Index]].
 
-**A search narrows on the row instead, and is strictly more correct.** A search
-opens every file anyway, so it can see a `domains:` tag on a source living
-*outside* the focus's folder. That path honours the tag; the key-only path
-cannot.
+A plain page load used to narrow on the *key*, because reading 845 files to check
+a tag was the only alternative. That left exactly one case wrong — a source
+tagged into a focus whose folder it does not live under was found by a search and
+missed by a page load. `FOCUS-07` asserted both halves precisely so that the day
+it changed, a test would say so.
 
-The remaining gap is therefore exactly one case: **a plain page load, no search,
-and a source tagged into a focus it does not live under.** It does not exist in
-reach-edu today — all 241 tagged sources sit in the folder their tag names, none
-carries a second tag — and the fix when it does is an index, not 845 reads: a
-small manifest written on capture and on re-tag, the same instinct as the `bin/`
-pointer. **Not built.** This paragraph exists so nobody discovers the limit from
-a wrong answer, and `FOCUS-07` asserts both halves — the miss on a page load, the
-hit under search — so the day it changes, a test says so.
+With a manifest, every source's `domains:` is legible for the cost of one object.
+**Narrowing now consults the row on every path**, the gap is closed, and
+`FOCUS-07` is inverted rather than deleted — the ID stays, the promise moves.
+
+A corpus with no manifest still narrows on the key for a page load and on the row
+under search. That is the older behaviour, kept because a corpus that has never
+been indexed has to keep working.
 
 ### 5. Chips are grouped by their declared type
 
@@ -163,7 +163,7 @@ one of its unprocessed leftovers.
 | `FOCUS-04` | Given a corpus declaring an unfamiliar type (`thesis`, whose plural no rule would guess) and a nested one, when the focuses are derived, then both resolve from their own `index.md` and a folder without one is not offered |
 | `FOCUS-05` | Given a focus, when a page is requested, then it holds only that focus's sources, newest first, and reports both counts |
 | `FOCUS-06` | Given no focus, when the listing is returned, then order is unchanged and `total` equals `corpus_total` |
-| `FOCUS-07` | Given a source tagged into a strategy whose folder it does not live in, when that strategy is focused, then a plain page load misses it and a search finds it — and the search still excludes untagged matches |
+| `FOCUS-07` | Given a source tagged into a strategy whose folder it does not live in, when that strategy is focused, then a manifest-backed page load finds it and an unindexed page load does not — and neither admits untagged matches |
 | `FOCUS-08` | Given a nested, unfamiliar type, when it is focused, then it narrows exactly like a familiar one, with no code that knows its name |
 
 ## Related
@@ -171,3 +171,4 @@ one of its unprocessed leftovers.
 - `context-v/specs/Browse-Corpus.md` — the listing this extends, and `BROWSE-17`, the stale-response guard search needed once a search cost 5.8s
 - `context-v/specs/Domain-Navigation.md` — the *exclusive* verb, deliberately kept separate
 - `context-v/specs/Corpus-Tree.md` — the same keys-not-bodies discipline
+- [[Search-Index]] — the manifest that closed the gap §4 used to name

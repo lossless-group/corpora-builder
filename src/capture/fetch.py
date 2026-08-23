@@ -19,6 +19,11 @@ from typing import Protocol
 
 import httpx
 
+# Re-exported: `prose_excerpt` moved down to `src/model/text.py` so the manifest
+# can compute the same excerpt without importing the capture package — which
+# eagerly imports `add`, which imports the manifest. Call sites are unchanged.
+from src.model.text import prose_excerpt as prose_excerpt
+
 
 @dataclass
 class FetchResult:
@@ -131,25 +136,3 @@ def parse_jina_preamble(text: str) -> tuple[dict[str, str], str]:
         start = len(lines)
 
     return preamble, "\n".join(lines[start:]).lstrip("\n")
-
-
-_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_NAV_LINE = re.compile(r"^\s*(\*|\-|#{1,6}\s|!\[|\[)")
-
-
-def prose_excerpt(body: str, limit: int) -> str:
-    """The first real sentence or two, skipping navigation chrome.
-
-    A page's markdown opens with skip-links, a logo, and a nav list. Storing
-    that as the excerpt makes triage useless — the analyst sees "Skip to main
-    content" for every source and stops reading excerpts entirely.
-    """
-    for raw in body.splitlines():
-        line = raw.strip()
-        if not line or _NAV_LINE.match(line):
-            continue
-        cleaned = " ".join(_MD_LINK.sub(r"\1", line).split())
-        if len(cleaned) < 40:  # a stray word or a caption, not prose
-            continue
-        return cleaned[:limit] + ("…" if len(cleaned) > limit else "")
-    return ""

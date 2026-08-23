@@ -8,6 +8,16 @@
 
 const BASE = 'http://127.0.0.1:8787';
 
+export interface Listing {
+  rows: SourceRow[];
+  total: number;
+  domains: string[];
+  corpus_total: number;
+  /** The store holds keys the manifest has never seen. Those rows are still
+   *  correct — they were read individually — but the index wants rebuilding. */
+  index_stale: boolean;
+}
+
 export interface SourceRow {
   path: string;
   domain: string;
@@ -60,6 +70,17 @@ export interface Meta {
   focuses: FocusDef[];
   workspace: WorkspaceInfo;
   writable: boolean;
+  /** Whether the corpus carries a source manifest at all. */
+  indexed: boolean;
+  /** The manifest fingerprint the Pagefind bundle was built from. Compared
+   *  against the bundle's own to decide whether ranking can be trusted. */
+  search_index: string;
+}
+
+export interface ReindexResult {
+  sources: number;
+  fingerprint: string;
+  search: { ok: boolean; skipped: string; error: string; records: number; files: number };
 }
 
 export interface CaptureResult {
@@ -124,17 +145,22 @@ export const api = {
   // `_domain_of`, so the client never learns which storage layout it is talking
   // to. Sending `<domain>/` as a raw prefix worked for reach-edu and silently
   // matched nothing in a corpus this tool wrote.
-  sources: (domain = '', search = '', focus = '') =>
-    get<{ rows: SourceRow[]; total: number; domains: string[]; corpus_total: number }>(
-      '/api/sources',
-      { domain, search, focus }
-    ),
+  sources: (domain = '', search = '', focus = '', limit = 200) =>
+    get<Listing>('/api/sources', { domain, search, focus, limit: String(limit) }),
   source: (path: string) => get<string>('/api/source', { path }),
   capture: (url: string, domain: string, full: boolean) =>
     post<CaptureResult>('/api/capture', { url, domain: domain || null, full }),
 
   /** The whole corpus as a folder tree. One key listing, no file bodies. */
   tree: () => get<{ total: number; tree: TreeNode[] }>('/api/tree'),
+
+  /** Rebuild the manifest and the search bundle. Writable-only, and it reads
+   *  every source — which is why nothing triggers it implicitly. */
+  reindex: () => post<ReindexResult>('/api/reindex', {}),
+
+  /** Where the sidecar serves the Pagefind bundle from. Not a `get`: the
+   *  runtime fetches its own chunks from this base. */
+  pagefindBase: () => `${BASE}/pagefind/`,
 
   changes: (repo: string, prefix = '', limit = 20) =>
     get<ChangePage>('/api/changes', { repo, prefix, limit: String(limit) }),

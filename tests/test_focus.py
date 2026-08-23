@@ -11,6 +11,10 @@ right.
 Focus narrows. What preserves access to the rest of the corpus is that the toggle
 is a toggle, and that `corpus_total` rides alongside `total` so a narrowed list
 always says what it is a subset of.
+
+`FOCUS-07` was inverted on 2026-08-23, when the index this spec had only named
+actually shipped. The ID is unchanged and the row in the spec table was rewritten
+rather than retired — the promise moved, it did not disappear.
 """
 
 from __future__ import annotations
@@ -19,7 +23,12 @@ from pathlib import Path
 
 import pytest
 
-from src.server.browse import list_domain_defs, list_sources
+from src.index.manifest import save_manifest
+from src.server.browse import (
+    build_manifest,
+    list_domain_defs,
+    list_sources,
+)
 from src.store import LocalFsStore
 
 WRAPPER = """---
@@ -219,29 +228,45 @@ def test_without_a_focus_nothing_changes(store: LocalFsStore) -> None:
 
 
 @pytest.mark.spec("FOCUS-07")
-def test_a_source_tagged_outside_its_folder_still_sorts_as_focused(
+def test_a_source_tagged_outside_its_folder_is_found_once_indexed(
     store: LocalFsStore,
 ) -> None:
-    """The case key-partitioning alone cannot see.
+    """**Inverted 2026-08-23.** This test used to assert the miss.
 
     A funder source tagged into a strategy lives in neither that folder nor its
-    prefix. Once the row is read its real `domains:` decides, which is why the
-    sort consults the tag as well as the path — and why the spec says plainly
-    that discovering such a source across the whole corpus needs an index.
+    prefix, so key-partitioning alone cannot see it. The old spec named that gap,
+    said the fix was an index rather than 845 reads, and staked this ID on it:
+    *"the day it changes, a test says so."* The index shipped — see
+    `context-v/specs/Search-Index.md` — so this is the day, and this is the test
+    saying so.
+
+    Both halves are still asserted, because both are still true. What changed is
+    which one applies when.
     """
-    # A plain page load narrows on the key, so the cross-tagged source is NOT
-    # found — the gap the spec names rather than hides.
+    # UNINDEXED, no search: still narrows on the key, so it is missed. Kept
+    # because a corpus that has never been indexed has to go on working, and
+    # this is exactly the reason `reindex` exists.
     plain = list_sources(store, focus=FOCUS)
     assert "Cross-Tagged Brief" not in [r.title for r in plain.rows]
 
-    # A search opens every file, so there the tag decides and the source IS
-    # found — strictly more correct, and free at that point.
+    # UNINDEXED, with a search: every file is open anyway, so the tag decides.
     searched = list_sources(store, search="e", focus=FOCUS)
     titles = [r.title for r in searched.rows]
     assert "Cross-Tagged Brief" in titles
-    # ...and the narrowing still holds: untagged sources matching "e" stay out.
     assert "Grant Announcement" not in titles
     assert "Portfolio Update" not in titles
+
+    # INDEXED: a plain page load consults the row for the cost of one object,
+    # and finds it. The gap is closed.
+    save_manifest(store, build_manifest(store))
+
+    indexed = list_sources(store, focus=FOCUS)
+    found = [r.title for r in indexed.rows]
+    assert "Cross-Tagged Brief" in found
+    # ...and narrowing still means narrowing: untagged funders stay out.
+    assert "Grant Announcement" not in found
+    assert "Portfolio Update" not in found
+    assert indexed.corpus_total == 7
 
 
 # ---------------------------------------------------------------------------

@@ -23,8 +23,15 @@ from src.capture import JinaFetcher, add_source
 from src.feed.git_source import GitChangeSource, GitRepoError
 from src.feed.render import to_json
 from src.identity import Workspace
+from src.index.manifest import MANIFEST_KEY
+from src.index.rebuild import reindex as rebuild_index
+from src.index.search_index import (
+    bundle_content_type,
+    bundle_fingerprint,
+    bundle_key,
+)
 from src.server.browse import list_domain_defs, list_domains, list_sources, load_source
-from src.server.tree import build_tree
+from src.server.tree import build_tree, visible_keys
 from src.store import CorpusStore, KeyNotFound
 
 STATIC = Path(__file__).parent / "static"
@@ -87,6 +94,7 @@ def create_app(
     @app.get("/api/meta")
     def meta() -> dict[str, object]:
         total, domains = list_domains(store)
+        indexed = MANIFEST_KEY in store.list("")
         return {
             "label": label,
             # Fields, not a rendered string. `label` used to be
@@ -106,6 +114,13 @@ def create_app(
             # folder across it. See DomainDef.
             "focuses": [d.to_json() for d in list_domain_defs(store)],
             "writable": writable,
+            # Whether the corpus carries a manifest, and whether the search
+            # bundle was built from the manifest that is there NOW. The client
+            # needs the second to know whether ranked search can be trusted —
+            # stale ranking served silently is worse than honest substring
+            # matching. Both derived from the key listing already in hand.
+            "indexed": indexed,
+            "search_index": bundle_fingerprint(store) if indexed else "",
         }
 
     @app.get("/api/tree")
@@ -115,7 +130,7 @@ def create_app(
         Every key, not just the `.md` wrappers: `bin/` is part of the corpus and
         a client asking where their PDFs went deserves to see them.
         """
-        keys = store.list("")
+        keys = visible_keys(store.list(""))
         return {"total": len(keys), "tree": [n.to_json() for n in build_tree(keys)]}
 
     @app.get("/api/sources")
@@ -142,6 +157,7 @@ def create_app(
             "total": listing.total,
             "domains": listing.domains,
             "corpus_total": listing.corpus_total,
+            "index_stale": listing.index_stale,
         }
 
     @app.get("/api/source", response_class=PlainTextResponse)
@@ -196,6 +212,49 @@ def create_app(
             media_type="application/pdf" if key.endswith(".pdf") else "application/octet-stream",
             headers={"Content-Disposition": f'inline; filename="{key.rsplit("/", 1)[-1]}"'},
         )
+
+    @app.get("/pagefind/{rel:path}")
+    def pagefind(rel: str) -> Response:
+        """Serve the Pagefind bundle out of the corpus.
+
+        The bundle lives in the store like everything else, which keeps a
+        private bucket private — the webview never talks to R2, only to this.
+        Content types matter here more than usual: a browser refuses to
+        stream-compile WebAssembly that is not served as `application/wasm`.
+        """
+        if ".." in rel.split("/") or rel.startswith("/"):
+            raise HTTPException(status_code=400, detail="path outside the bundle")
+        try:
+            data = store.read(bundle_key(rel))
+        except KeyNotFound as exc:
+            raise HTTPException(status_code=404, detail=f"not built: {rel}") from exc
+        return Response(content=data, media_type=bundle_content_type(rel))
+
+    @app.post("/api/reindex")
+    def reindex() -> dict[str, object]:
+        """Rebuild the manifest and the search bundle.
+
+        Writable-only. It reads every source and writes into the corpus, so it
+        is gated exactly like capture — the first thing this surface was ever
+        pointed at was a client corpus on the RED list.
+        """
+        if not writable:
+            raise HTTPException(
+                status_code=403,
+                detail="this server is read-only; restart with --writable to reindex",
+            )
+        result = rebuild_index(store)
+        return {
+            "sources": result.sources,
+            "fingerprint": result.fingerprint,
+            "search": {
+                "ok": result.search.ok,
+                "skipped": result.search.skipped,
+                "error": result.search.error,
+                "records": result.search.records,
+                "files": result.search.files,
+            },
+        }
 
     @app.post("/api/capture")
     def capture(

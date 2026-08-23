@@ -226,6 +226,36 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reindex(args: argparse.Namespace) -> int:
+    """`corpora reindex` — rebuild the manifest, and the search bundle from it.
+
+    The one operation that reads every source. Deliberately a command rather
+    than something a page load can trigger: see `src/index/rebuild.py`.
+    """
+    from src.index.rebuild import reindex
+
+    store, workspace = build_store(load_env(), args.local)
+
+    with console.status("reading the corpus"):
+        result = reindex(store, prefix=args.prefix, search=not args.no_search)
+
+    console.print(f"[green]indexed[/] {result.sources} source(s) · {workspace.display_name}")
+    console.print(f"  manifest    {result.fingerprint[:12]}")
+
+    search = result.search
+    if search.skipped:
+        console.print(f"[dim]  search      skipped — {search.skipped}[/]")
+    elif not search.ok:
+        console.print(f"[red]  search      failed — {search.error}[/]")
+        return 1
+    else:
+        console.print(
+            f"  search      {search.records} record(s) in {search.files} file(s) "
+            f"· {search.written} sent"
+        )
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -294,6 +324,15 @@ def main(argv: list[str] | None = None) -> int:
     changes.add_argument("--max-paths", type=int, default=5, dest="max_paths")
     changes.add_argument("--json", action="store_true", help="machine shape instead of prose")
     changes.set_defaults(func=cmd_changes)
+
+    reindex_cmd = sub.add_parser("reindex", help="rebuild the search index")
+    reindex_cmd.add_argument("--prefix", default="", help="limit to a subtree")
+    reindex_cmd.add_argument(
+        "--no-search",
+        action="store_true",
+        help="write the manifest only, skipping the Pagefind bundle",
+    )
+    reindex_cmd.set_defaults(func=cmd_reindex)
 
     show = sub.add_parser("show", help="print one source file")
     show.add_argument("path")

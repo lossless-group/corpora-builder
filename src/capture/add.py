@@ -22,6 +22,7 @@ from src.binary.ingest import ingest_binary
 from src.binary.store import BinStore
 from src.capture.binary import build_binary_asset, is_binary
 from src.capture.fetch import Fetcher, prose_excerpt
+from src.index.manifest import Manifest, entry_from_source, load_manifest, save_manifest
 from src.model import SourceFile, StrandedContent, normalize_url, source_filename
 from src.store import CorpusStore
 
@@ -54,17 +55,29 @@ def domain_prefix(domain: str | None) -> str:
     return f"live/{domain.strip('/')}/sources/"
 
 
-def _existing_by_normalized_url(store: CorpusStore, prefix: str, key: str) -> str:
+def _existing_by_normalized_url(
+    store: CorpusStore, prefix: str, key: str, manifest: Manifest | None
+) -> str:
     """The path already holding `key`, or empty.
 
-    Reads every markdown file under the prefix. Fine at corpus scale — the
-    largest real corpus is 845 files and `CachedStore` makes a repeat scan free.
-    A `normalized_url` index is a Phase 4 concern, once checkpoints exist to
-    keep one honest.
+    Answered from the manifest where it covers a key, and by reading where it
+    does not — the same incremental rule the listing uses, so an index a few
+    captures behind costs a few reads rather than a rescan. Before the manifest
+    existed this opened every markdown file under the prefix on every single
+    capture.
     """
-    for path in store.list(prefix):
-        if not path.endswith(".md"):
-            continue
+    paths = [p for p in store.list(prefix) if p.endswith(".md")]
+    entries = manifest.entries if manifest else {}
+
+    unindexed: list[str] = []
+    for path in paths:
+        entry = entries.get(path)
+        if entry is None:
+            unindexed.append(path)
+        elif entry.normalized_url and entry.normalized_url == key:
+            return path
+
+    for path in unindexed:
         try:
             existing = SourceFile.parse(store.read(path).decode("utf-8", errors="replace"))
         except StrandedContent:
@@ -92,7 +105,13 @@ def add_source(
     prefix = domain_prefix(domain)
     key = normalize_url(url)
 
-    duplicate = _existing_by_normalized_url(store, prefix, key)
+    # Loaded once: consulted for the duplicate check, updated after the write.
+    # `None` means this corpus has never been indexed, and capture does not
+    # create an index — that stays an explicit `corpora reindex`, so a corpus
+    # that has never been indexed goes on behaving exactly as it did.
+    manifest = load_manifest(store)
+
+    duplicate = _existing_by_normalized_url(store, prefix, key, manifest)
     if duplicate:
         existing = SourceFile.parse(store.read(duplicate).decode("utf-8", errors="replace"))
         return AddResult(path=duplicate, created=False, source=existing, duplicate_of=duplicate)
@@ -141,4 +160,11 @@ def add_source(
             source.binary_asset = build_binary_asset(label, b"", stamp, status)
 
     store.write(path, source.render().encode("utf-8"))
+
+    if manifest is not None:
+        # One entry, not a rebuild. A capture that triggered an 845-read reindex
+        # would make the index cost more than it saves.
+        manifest.entries[path] = entry_from_source(path, source)
+        save_manifest(store, manifest)
+
     return AddResult(path=path, created=True, source=source)

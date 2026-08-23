@@ -10,6 +10,13 @@
   import { SvelteSet } from 'svelte/reactivity';
   import { onMount } from 'svelte';
   import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
+  import {
+    RankedSearch,
+    decideSearch,
+    loadBundle,
+    poolCoversCorpus,
+    type Bundle
+  } from '$lib/search';
 
   let meta = $state<Meta | null>(null);
   let rows = $state<SourceRow[]>([]);
@@ -35,11 +42,60 @@
   let focus = $state('');
   let corpusTotal = $state(0);
 
-  // Every request takes a number and stale answers are dropped. A search reads
-  // the whole corpus (1.2-5.8s) while an unsearched page reads fifty files
-  // (0.48s), so clearing the box issues a fast request while a slow one is
-  // still in flight — and without this, whichever lands last wins.
+  // Every request takes a number and stale answers are dropped. Before the
+  // manifest a search read the whole corpus (1.2-5.8s) while an unsearched page
+  // read fifty files (0.48s), so clearing the box issued a fast request while a
+  // slow one was still in flight and whichever landed last won. The manifest
+  // makes both one read, which shrinks the window rather than closing it —
+  // network ordering is not a promise you get to stop making.
   const inflight = new Latest();
+
+  // ── Ranked search ──────────────────────────────────────────────────────
+  // Pagefind ranks, stems, and takes two words in any order. It also cannot
+  // stay fresh — it has no incremental add — so it is used only when its
+  // recorded fingerprint matches the manifest that is actually there, and the
+  // server's manifest-backed search answers whenever it does not. Serving stale
+  // ranking silently is worse than serving honest substring matching.
+  let bundle = $state<Bundle | null>(null);
+  let ranked = $state<RankedSearch | null>(null);
+  let searchNote = $state('');
+  let indexStale = $state(false);
+  let reindexing = $state(false);
+
+  // Rows for the current domain and focus, unsearched. With a manifest this is
+  // one read server-side, so it is fetched once per filter change and searched
+  // in the browser — which is what makes ranked search instant rather than a
+  // round trip per keystroke.
+  let pool = $state<SourceRow[]>([]);
+  const POOL_LIMIT = 2000;
+  const PAGE = 200;
+
+  async function wireSearch() {
+    const decision = decideSearch(bundle, meta?.search_index ?? '');
+    if (decision.mode === 'ranked' && bundle) {
+      ranked = new RankedSearch(bundle.api);
+      searchNote = '';
+    } else {
+      ranked = null;
+      searchNote = decision.reason;
+    }
+  }
+
+  async function reindex() {
+    if (reindexing) return;
+    reindexing = true;
+    try {
+      await api.reindex();
+      meta = await api.meta();
+      bundle = await loadBundle(api.pagefindBase(), meta.search_index);
+      await wireSearch();
+      await load();
+    } catch (err) {
+      searchNote = err instanceof Error ? err.message : String(err);
+    } finally {
+      reindexing = false;
+    }
+  }
 
   // ── The Files surface ──────────────────────────────────────────────────
   // Fetched once and kept: the tree is derived from keys, so it is one cheap
@@ -111,6 +167,11 @@
       try {
         meta = await api.meta();
         booting = false;
+        // Loading the bundle is a fetch of a WebAssembly module; a corpus with
+        // no search index simply gets `null` back and the server does the
+        // searching, so this never blocks the first paint.
+        bundle = await loadBundle(api.pagefindBase(), meta.search_index);
+        await wireSearch();
         await load();
         return;
       } catch {
@@ -138,11 +199,56 @@
   }
 
   async function load() {
+    if (ranked) {
+      const data = await inflight.run(() => api.sources(domainFilter, '', focus, POOL_LIMIT));
+      if (!data) return; // superseded — the operator has moved on
+      pool = data.rows;
+      corpusTotal = data.corpus_total;
+      indexStale = data.index_stale;
+      // Against `data.total`, NOT the corpus: the pool only ever has to cover
+      // what the current domain and focus select. Comparing to the corpus made
+      // every focus chip stand ranking down — 41 rows held, 847 in the corpus,
+      // and the two were never going to match. Found by driving it.
+      if (!poolCoversCorpus(pool.length, data.total)) {
+        // Genuinely more rows than we hold. A ranked hit outside the window has
+        // no row to render and would simply disappear — so stand down and say
+        // why, rather than quietly answering from a slice.
+        ranked = null;
+        searchNote = `${data.total} sources here — more than ranking holds, so the server searches`;
+        await load();
+        return;
+      }
+      await applySearch();
+      return;
+    }
     const data = await inflight.run(() => api.sources(domainFilter, search, focus));
-    if (!data) return; // superseded — the operator has moved on
+    if (!data) return;
     rows = data.rows;
     total = data.total;
     corpusTotal = data.corpus_total;
+    indexStale = data.index_stale;
+  }
+
+  /** Rank the pool with Pagefind. No request: the rows are already here. */
+  async function applySearch() {
+    if (!ranked) return load();
+    if (!search.trim()) {
+      rows = pool.slice(0, PAGE);
+      total = pool.length;
+      return;
+    }
+    const keys = await ranked.keys(search, focus);
+    // The pool is already narrowed by domain, so a ranked key outside it simply
+    // finds no row — which is the correct answer, since Pagefind knows nothing
+    // about the domain filter and should not have to.
+    const byKey = new Map(pool.map((r) => [r.path, r]));
+    const hits: SourceRow[] = [];
+    for (const key of keys) {
+      const row = byKey.get(key);
+      if (row) hits.push(row);
+    }
+    rows = hits.slice(0, PAGE);
+    total = hits.length;
   }
 
   /** Chips grouped by their declared type, so a row of them says what it IS.
@@ -171,7 +277,9 @@
 
   function debounced() {
     clearTimeout(timer);
-    timer = setTimeout(load, 160);
+    // Ranked search runs against rows already in hand, so the debounce is only
+    // there to stop it ranking on every keystroke — not to spare a request.
+    timer = setTimeout(() => (ranked ? applySearch() : load()), 160);
   }
 
   async function capture(event: Event) {
@@ -223,7 +331,14 @@
     <!-- The mark stands in for the wordmark; the name stays as the accessible
          label, so a screen reader still hears "corpora". -->
     <h1><CorporaMark size={26} /></h1>
-    <input bind:value={search} oninput={debounced} type="search" placeholder="Search title, excerpt, or path…" />
+    <input
+      bind:value={search}
+      oninput={debounced}
+      type="search"
+      placeholder={ranked
+        ? 'Search — ranked, any word order…'
+        : 'Search title, excerpt, or path…'}
+    />
     <div class="dom">
       <DomainCombo
         bind:value={domainFilter}
@@ -284,6 +399,24 @@
     </form>
   {:else if meta}
     <p class="ro">Read-only. Restart with <code>--writable</code> to capture.</p>
+  {/if}
+
+  {#if meta && (searchNote || indexStale)}
+    <!-- The search index is allowed to be absent or behind; it is not allowed
+         to be quietly wrong about it. An affordance appears only on a writable
+         server, because offering a rebuild that would 403 is worse than none. -->
+    <p class="ro idx">
+      {#if indexStale}
+        The index has not seen every source yet — those rows were read directly.
+      {:else}
+        {searchNote}
+      {/if}
+      {#if meta.writable}
+        <button class="relink" onclick={reindex} disabled={reindexing}>
+          {reindexing ? 'Rebuilding…' : 'Rebuild index'}
+        </button>
+      {/if}
+    </p>
   {/if}
 </header>
 
@@ -464,6 +597,16 @@
   .check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); flex: 0 0 auto; white-space: nowrap; }
   .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--color-accent); }
   .ro { margin: 6px 0 0; font-size: 11px; color: var(--color-text-muted); }
+  .idx { display: flex; align-items: center; gap: 8px; }
+  /* Opts out of the global control primitive, like the tree rows do: a
+     border and a field background here would read as a form, and this is a
+     sentence with an action at the end of it. */
+  .relink {
+    border: none; background: none; padding: 0;
+    font-size: 11px; color: var(--color-accent); cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px;
+  }
+  .relink:disabled { color: var(--color-text-muted); cursor: default; text-decoration: none; }
   code { font-size: 11px; }
 
   main { padding: 12px 16px 60px; max-width: 1100px; }

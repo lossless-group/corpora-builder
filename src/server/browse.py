@@ -16,13 +16,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 
 from src.binary.store import BinStore
-from src.capture.fetch import prose_excerpt
+from src.index.manifest import (
+    INDEX_PREFIX,
+    MANIFEST_KEY,
+    Entry,
+    Manifest,
+    entry_from_failure,
+    entry_from_source,
+    load_manifest,
+)
 from src.model import SourceFile
 from src.store import CorpusStore
-
-#: How much body prose to show when a file carries no `excerpt`. Larger than the
-#: capture-time cap because this is a reading surface, not a stored field.
-PREVIEW_CHARS = 240
 
 
 @dataclass
@@ -69,6 +73,11 @@ class Listing:
     #: — "82 in Workforce Development · 832 in the corpus". A single number would
     #: make a filter look like the whole world.
     corpus_total: int = 0
+    #: True when a manifest exists but the store holds keys it has never seen.
+    #: Those keys are read individually so the listing is still correct — this
+    #: flag says the index needs rebuilding, not that the answer is wrong. An
+    #: edit in place is the case it CANNOT see; see Search-Index Behaviour 5.
+    index_stale: bool = False
 
 
 def _domain_of(path: str) -> str:
@@ -86,21 +95,6 @@ def _domain_of(path: str) -> str:
     if parts and parts[-1] == "sources":
         parts = parts[:-1]
     return "/".join(parts) or "(root)"
-
-
-def _binary_state(source: SourceFile, bin_store: BinStore | None) -> tuple[str, str, int, bool]:
-    """`(key, state, bytes, optimized)` for a source's binary, if it has one.
-
-    `state` is empty for text-only sources — most of them — and otherwise
-    `present` or `not_downloaded`. Determining it costs a filesystem check
-    against the local cache and never a network call, which is what lets a
-    listing of 858 rows stay fast.
-    """
-    asset = source.binary_asset
-    if asset is None or not asset.binary_key:
-        return "", "", 0, False
-    state = "present" if bin_store and bin_store.is_cached(asset.binary_key) else "not_downloaded"
-    return asset.binary_key, state, asset.working_bytes, asset.was_compressed
 
 
 def list_domains(store: CorpusStore, prefix: str = "") -> tuple[int, list[str]]:
@@ -259,6 +253,157 @@ def _in_domain(key: str, domain: str) -> bool:
     return d == domain or d.startswith(domain + "/")
 
 
+def row_from_entry(entry: Entry, bin_store: BinStore | None) -> SourceRow:
+    """A listing row. **The only row builder there is.**
+
+    Both paths reach it through an `Entry`: the indexed path reads one out of the
+    manifest, the unindexed path parses a file into one and throws it away. That
+    is deliberate. Two row builders — one for files, one for the index — would be
+    two things to keep in step, and the way that failure presents is "search
+    finds different things than the page." `INDEX-07` asserts the agreement;
+    having a single function is what makes it true.
+
+    `binary_state` is the one field recomputed rather than stored, because it is
+    a fact about THIS machine and the manifest is shared. A cached copy of that
+    answer would report `present` on a laptop that has never downloaded the
+    bytes. It costs a filesystem check against the local cache and never a
+    network call, which is what lets a listing of 858 rows stay fast.
+    """
+    state = ""
+    if entry.binary_key:
+        cached = bool(bin_store and bin_store.is_cached(entry.binary_key))
+        state = "present" if cached else "not_downloaded"
+    return SourceRow(
+        path=entry.key,
+        domain=_domain_of(entry.key),
+        title=entry.title,
+        status=entry.status,
+        content_pulled=entry.content_pulled,
+        published_at=entry.published_at,
+        fetched_at=entry.fetched_at,
+        excerpt=entry.excerpt,
+        url=entry.url,
+        binary_key=entry.binary_key,
+        binary_state=state,
+        binary_bytes=entry.binary_bytes,
+        binary_optimized=entry.binary_optimized,
+        domains=list(entry.domains),
+        error=entry.error,
+    )
+
+
+def _read_many(store: CorpusStore, keys: list[str]) -> dict[str, bytes | Exception]:
+    """Read `keys` concurrently, recording failures rather than raising.
+
+    Against R2 each GET is ~140ms of latency and almost no transfer, so fifty
+    sequential reads spend seven seconds waiting rather than working. botocore
+    clients are thread-safe for requests, and a LocalFsStore does not care.
+    """
+    blobs: dict[str, bytes | Exception] = {}
+    if not keys:
+        return blobs
+    with ThreadPoolExecutor(max_workers=min(16, len(keys))) as pool:
+        futures = {pool.submit(store.read, k): k for k in keys}
+        for fut in as_completed(futures):
+            key = futures[fut]
+            try:
+                blobs[key] = fut.result()
+            except Exception as exc:  # noqa: BLE001 - recorded, not raised
+                blobs[key] = exc
+    return blobs
+
+
+def _entry_for(key: str, blob: bytes | Exception) -> Entry:
+    """One key's manifest entry, whether or not it parsed."""
+    try:
+        if isinstance(blob, Exception):
+            raise blob
+        return entry_from_source(key, SourceFile.parse(blob.decode("utf-8", errors="replace")))
+    except Exception as exc:  # noqa: BLE001 - a damaged file must still list
+        return entry_from_failure(key, f"{type(exc).__name__}: {exc}")
+
+
+def build_manifest(store: CorpusStore, prefix: str = "") -> Manifest:
+    """Read the corpus once and write down what a listing needs.
+
+    The expensive operation, run deliberately by `corpora reindex` — never as a
+    side effect of browsing, which would put an 845-read rebuild behind an
+    innocent page load.
+    """
+    keys = source_keys(store, prefix)
+    blobs = _read_many(store, keys)
+    return Manifest(entries={k: _entry_for(k, blobs.get(k, KeyError(k))) for k in keys})
+
+
+def _source_keys(keys: list[str]) -> list[str]:
+    """The captured sources among `keys`.
+
+    Excludes the corpus's own documentation (`NOT_SOURCES`) and everything under
+    `index/`, which this tool derives rather than captures.
+    """
+    return [
+        k
+        for k in keys
+        if k.endswith(".md")
+        and not k.startswith(INDEX_PREFIX)
+        and k.rsplit("/", 1)[-1] not in NOT_SOURCES
+    ]
+
+
+def source_keys(store: CorpusStore, prefix: str = "") -> list[str]:
+    """Every key under `prefix` that is a captured source."""
+    return _source_keys(store.list(prefix))
+
+
+def _is_indexed(store: CorpusStore, keys: list[str], prefix: str) -> bool:
+    """Whether the corpus carries a manifest — without spending a request to ask.
+
+    The key listing is already in hand, so an unindexed corpus costs nothing to
+    detect. That matters: reading `index/sources.jsonl` speculatively would put a
+    404 round-trip on every listing of every corpus that has never been indexed,
+    and `BROWSE-15` measures exactly this in read counts.
+
+    Only a *prefixed* listing has to ask, because a prefix that is not `index/`
+    cannot see the manifest in its own results.
+    """
+    if MANIFEST_KEY in keys:
+        return True
+    return bool(prefix) and store.exists(MANIFEST_KEY)
+
+
+def _matching(rows: list[SourceRow], search: str) -> list[SourceRow]:
+    """Rows whose text contains `search`, case-insensitively.
+
+    The `domains:` tag is searchable text too. Typing "literacy" should reach a
+    source that carries `strategy:adult-literacy-numeracy` even when neither its
+    title nor its excerpt says the word.
+    """
+    needle = search.lower()
+    return [
+        r
+        for r in rows
+        if needle in r.title.lower()
+        or needle in r.excerpt.lower()
+        or needle in r.path.lower()
+        or any(needle in d.lower() for d in r.domains)
+    ]
+
+
+def _ordered(rows: list[SourceRow], search: str) -> list[SourceRow]:
+    """The order this listing has always used, preserved exactly.
+
+    Unsearched, rows come back in key order — the filename's date prefix, which
+    the naming convention writes *from* `fetched_at`. Searched, they come back in
+    `fetched_at` order. The two agree for anything following the convention and
+    differ for older files, and unifying them would change what the screen shows
+    for reasons that have nothing to do with an index.
+    """
+    if search:
+        # Damaged rows have no fetched_at and sort last.
+        return sorted(rows, key=lambda r: r.fetched_at, reverse=True)
+    return sorted(rows, key=lambda r: r.path.rsplit("/", 1)[-1], reverse=True)
+
+
 def list_sources(
     store: CorpusStore,
     prefix: str = "",
@@ -280,12 +425,15 @@ def list_sources(
     Access to the rest of the corpus is preserved by the toggle being a toggle —
     one click away — and by `corpus_total` riding alongside `total`, so a
     narrowed list always says what it is a subset of.
+
+    **Two paths, and which one runs depends on whether the corpus is indexed.**
+    With a manifest every row is affordable, so narrowing and searching happen on
+    rows and a search costs one read. Without one the old rules apply: a page
+    load reads only its page, and a search reads everything because it has to.
+    An unindexed corpus must keep working — see `INDEX-08`.
     """
-    all_keys = [
-        k
-        for k in store.list(prefix)
-        if k.endswith(".md") and k.rsplit("/", 1)[-1] not in NOT_SOURCES
-    ]
+    raw_keys = store.list(prefix)
+    all_keys = _source_keys(raw_keys)
     # Counted BEFORE any narrowing, which is the whole job: a narrowed list has
     # to be able to say what it is a subset of. Measured after the domain filter
     # it reported 406 of 406 — technically a number, and useless.
@@ -293,22 +441,47 @@ def list_sources(
 
     if domain:
         all_keys = [k for k in all_keys if _in_domain(k, domain)]
+    domains = sorted({_domain_of(k) for k in all_keys})
+
     defs = list_domain_defs(store, prefix) if focus else []
-    focus_dir = ""
-    if focus:
-        focus_dir = focus_folder(focus, defs)
-        # Narrowed on the KEY, so a plain page load costs no extra reads. Exact
-        # today: all 241 tagged sources sit in the folder their tag names and
-        # none carries a second tag.
-        #
-        # A search is different — it opens every file anyway, so it CAN see a
-        # tag on a source living outside the folder. There the narrowing happens
-        # on rows instead, below, and is strictly more correct. The remaining
-        # gap is a plain page load with no search, and the fix for that is an
-        # index rather than 845 reads. See `context-v/specs/Strategy-Focus.md`.
-        if not search:
-            all_keys = [k for k in all_keys if _in_domain(k, focus_dir)]
-    domains = {_domain_of(k) for k in all_keys}
+    focus_dir = focus_folder(focus, defs) if focus else ""
+
+    manifest = load_manifest(store) if _is_indexed(store, raw_keys, prefix) else None
+
+    if manifest is not None:
+        # Keys the manifest has never seen are read individually, so an index a
+        # few captures behind costs a few reads rather than a rebuild. The one
+        # thing this cannot see is an edit in place — same key, changed content.
+        uncovered = [k for k in all_keys if k not in manifest.entries]
+        blobs = _read_many(store, uncovered)
+        rows = []
+        for key in all_keys:
+            entry = manifest.entries.get(key)
+            if entry is None:
+                entry = _entry_for(key, blobs.get(key, KeyError(key)))
+            rows.append(row_from_entry(entry, bin_store))
+        if focus:
+            # Narrowed on the ROW, so a source tagged into a focus whose folder
+            # it does not live under is found. That case used to be reachable
+            # only under search; see Strategy-Focus §4 and `FOCUS-07`.
+            rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
+        if search:
+            rows = _matching(rows, search)
+        return Listing(
+            rows=_ordered(rows, search)[offset : offset + limit],
+            total=len(rows),
+            domains=domains,
+            corpus_total=corpus_total,
+            index_stale=bool(uncovered),
+        )
+
+    # ---- unindexed ---------------------------------------------------------
+    if focus and not search:
+        # Narrowed on the KEY, because the alternative is opening every file to
+        # check a tag. Exact for reach-edu today: all 241 tagged sources sit in
+        # the folder their tag names and none carries a second tag.
+        all_keys = [k for k in all_keys if _in_domain(k, focus_dir)]
+        domains = sorted({_domain_of(k) for k in all_keys})
 
     # A search has to look at everything. A page load does not, and pretending
     # otherwise costs 845 network reads to show 50 rows.
@@ -316,93 +489,26 @@ def list_sources(
     paged = not search
     keys = _page_keys(all_keys, offset, limit) if paged else all_keys
 
-    rows: list[SourceRow] = []
-
-    # Read the page concurrently. Against R2 each GET is ~140ms of latency and
-    # almost no transfer, so fifty sequential reads spend seven seconds waiting
-    # rather than working. botocore clients are thread-safe for requests, and a
-    # LocalFsStore does not care. Order is restored below.
-    blobs: dict[str, bytes | Exception] = {}
-    if keys:
-        with ThreadPoolExecutor(max_workers=min(16, len(keys))) as pool:
-            futures = {pool.submit(store.read, k): k for k in keys}
-            for fut in as_completed(futures):
-                key = futures[fut]
-                try:
-                    blobs[key] = fut.result()
-                except Exception as exc:  # noqa: BLE001 - recorded, not raised
-                    blobs[key] = exc
-
-    for key in keys:
-        domain = _domain_of(key)
-        try:
-            blob = blobs[key]
-            if isinstance(blob, Exception):
-                raise blob
-            source = SourceFile.parse(blob.decode("utf-8", errors="replace"))
-        except Exception as exc:  # noqa: BLE001 - a damaged file must still list
-            rows.append(
-                SourceRow(
-                    path=key,
-                    domain=domain,
-                    title=key.rsplit("/", 1)[-1],
-                    error=f"{type(exc).__name__}: {exc}",
-                )
-            )
-            continue
-        bin_key, bin_state, bin_size, bin_opt = _binary_state(source, bin_store)
-        rows.append(
-            SourceRow(
-                path=key,
-                domain=domain,
-                title=source.title,
-                status=source.status,
-                content_pulled=source.content_pulled,
-                published_at=str(source.published_at or ""),
-                fetched_at=str(source.fetched_at or ""),
-                # Fall back to the body. reach-edu's 845 files carry no
-                # `excerpt` at all — they predate the field — and a browse
-                # screen of bare titles is not worth opening.
-                excerpt=source.excerpt or prose_excerpt(source.body, PREVIEW_CHARS),
-                url=source.url,
-                binary_key=bin_key,
-                binary_state=bin_state,
-                binary_bytes=bin_size,
-                binary_optimized=bin_opt,
-                domains=list(source.domains),
-            )
-        )
+    blobs = _read_many(store, keys)
+    rows = [row_from_entry(_entry_for(k, blobs.get(k, KeyError(k))), bin_store) for k in keys]
 
     if search:
-        needle = search.lower()
-        rows = [
-            r
-            for r in rows
-            if needle in r.title.lower() or needle in r.excerpt.lower() or needle in r.path.lower()
-            # The `domains:` tag is searchable text too. Typing "literacy" should
-            # reach a source that carries `strategy:adult-literacy-numeracy` even
-            # when neither its title nor its excerpt says the word.
-            or any(needle in d.lower() for d in r.domains)
-        ]
-
-    if search and focus:
-        # Every file was opened for the search, so the tag is visible here even
-        # on a source living outside the focus's folder — a strictly better
-        # narrowing than the key-level one, and free at this point.
-        rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
+        rows = _matching(rows, search)
+        if focus:
+            # Every file was opened for the search, so the tag is visible here
+            # even on a source living outside the focus's folder — strictly
+            # better than the key-level narrowing, and free at this point.
+            rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
         total = len(rows)
 
     if paged:
         # Already ordered and windowed by key; re-slicing would drop rows.
-        return Listing(rows=rows, total=total, domains=sorted(domains), corpus_total=corpus_total)
+        return Listing(rows=rows, total=total, domains=domains, corpus_total=corpus_total)
 
-    # Newest fetch first — the question a corpus browser answers most often is
-    # "what did I just add". Damaged rows have no fetched_at and sort last.
-    rows.sort(key=lambda r: r.fetched_at, reverse=True)
     return Listing(
-        rows=rows[offset : offset + limit],
-        total=len(rows),
-        domains=sorted(domains),
+        rows=_ordered(rows, search)[offset : offset + limit],
+        total=total,
+        domains=domains,
         corpus_total=corpus_total,
     )
 

@@ -11,6 +11,7 @@ from src.model.source import (
     BinaryAsset,
     SourceFile,
 )
+from src.model.text import prose_excerpt
 from src.model.urls import normalize_url
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "StrandedContent",
     "normalize_url",
     "parse_frontmatter",
+    "prose_excerpt",
     "render_frontmatter",
     "slugify",
     "source_filename",

@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.index.manifest import INDEX_PREFIX
+
 
 @dataclass
 class TreeNode:
@@ -67,6 +69,19 @@ def _sort(nodes: list[TreeNode]) -> list[TreeNode]:
 #: the app's business, not the reader's.
 FLATTENED = ("bin/",)
 
+#: Prefixes the tree does not draw at all. `index/` holds what this tool DERIVES
+#: from the corpus — the source manifest and the search bundle — rather than what
+#: the operator put there. Same test as flave-ai skipping dotfiles, and the same
+#: one the blueprint states: not "is this internal?" but **"does this level tell
+#: the reader anything?"** A cache does not, and a client looking at work done on
+#: their behalf should see their sources, not our bookkeeping.
+HIDDEN = (INDEX_PREFIX,)
+
+
+def visible_keys(keys: list[str]) -> list[str]:
+    """The keys a reader should see. What `/api/tree` counts, as well as draws."""
+    return [k for k in keys if not k.startswith(HIDDEN)]
+
 
 def _flatten_fanout(key: str) -> str:
     """Drop a content-addressed fan-out segment: `bin/00/<sha>.pdf` → `bin/<sha>.pdf`."""
@@ -86,11 +101,12 @@ def build_tree(keys: list[str]) -> list[TreeNode]:
     file; an empty input is an empty list rather than a phantom root.
 
     A content-addressed fan-out level is flattened for display — see `FLATTENED`
-    — but a file node's `path` is always its real key.
+    — but a file node's `path` is always its real key. Derived keys are dropped
+    entirely — see `HIDDEN`.
     """
     roots: dict[str, TreeNode] = {}
 
-    for key in sorted(keys):
+    for key in sorted(visible_keys(keys)):
         display = _flatten_fanout(key)
         parts = [p for p in display.split("/") if p]
         if not parts:
