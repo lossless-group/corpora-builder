@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.2.0
+at_semantic_version: 0.0.3.0
 status: Draft
 site_uuid: 2e7b4c96-8a01-4d3f-b25e-6c9f0a17d834
 hex_code: t8pv2c
@@ -51,6 +51,40 @@ Measured across all 845 sources on 2026-08-22:
 no `domains:` is not unclassified; it is simply not the first place to look for
 any particular strategy. Backfilling the 604 would destroy the signal by making
 everything equally emphasised — which is why this spec does not.
+
+### The zero was read wrong (corrected 2026-08-23)
+
+`multi-valued: 0` was taken to mean *multi-domain sources do not exist here*, and
+two decisions were built on that reading. **It means the opposite of what it was
+read to mean.**
+
+Multi-domain membership in this corpus is expressed as **one pointer file per
+folder**, not as a longer list in one file. Measured the same day:
+
+| | |
+|---|---|
+| distinct `source_uuid`s | 194 |
+| filed in exactly one folder | 115 |
+| filed in **two or more** | **79** (126 extra pointers) |
+| deepest fan-out | one source in **six** folders |
+| multi-valued `domains:` | still **0** |
+
+Each pointer is ~1.1KB: the canonical `source_uuid`, `status: metadata-only`,
+the lede, and its own empty `# Extracts` skeleton — carrying exactly the one
+`domains:` value that names the folder it sits in. The body is not there. The
+canonical content lives in SurrealDB per
+[[../../../augment-it/context-v/specs/Source-Content-Storage-SurrealDB-Primary-Local-As-Toggle]],
+which makes `corpus_path` optional and puts Extracts per *usage* — and a filing
+into a second strategy is a second usage.
+
+**That is the design, not drift.** A corpus that will get very large has to hand
+an agent a *scoped* set of sources when it drafts, because accuracy and
+attribution are the whole product; a source that genuinely bears on two
+strategies belongs in both scopes, with its own extracts in each. The pointer is
+what makes that cheap.
+
+So `domains:` is single-valued **by construction**. The number to reason from is
+79, not 0.
 
 ## The one rule everything follows from
 
@@ -137,9 +171,14 @@ a client's corpus declares), read from the data like everything else here.
 
 ### 6. Multiple focuses are the eventual shape, one is the current one
 
-`domains:` is a list. One focus at a time is what ships; the API takes a single
-`focus` because inventing multi-focus ranking with zero multi-valued data would
-be designing against imagination.
+One focus at a time is what ships, and the API takes a single `focus`.
+
+**The reason given here was wrong** — "zero multi-valued data" — and is corrected
+above: 79 sources are filed across two or more folders. The honest reason is
+narrower. A focus selects a *folder*, and a source in six folders is reached by
+any of the six; what a second simultaneous focus would mean — union or
+intersection — has never been asked for by anyone drafting against this corpus.
+That is a question to put to an operator, not one to answer by guessing.
 
 ### 7. A declaration is not a source
 
