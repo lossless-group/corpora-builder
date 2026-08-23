@@ -114,6 +114,7 @@ config change when wanted). Tauri packaging.
 | `BROWSE-15` | Given more sources than the page size and no search term, when a page is listed, then only that page's files are read from the store |
 | `BROWSE-09` | Given both the `live/<type>/<slug>/sources/` layout and reach-edu's pre-existing `funders/<slug>/` and `strategies/<slug>/sources/`, when domains are derived, then each reads as an operator would name it |
 | `BROWSE-16` | Given the same domain stored in both layouts — `<type>/<slug>/` and `live/<type>/<slug>/sources/` — when the listing is filtered by that domain, then sources from both are returned, because filtering is by folder rather than by raw key prefix |
+| `BROWSE-17` | Given a slow search still in flight when a faster request is issued, when both resolve, then the newest request's result is the one shown and the stale one is dropped |
 
 ## Acceptance
 

@@ -57,6 +57,7 @@ export interface Meta {
   label: string;
   total: number;
   domains: string[];
+  focuses: FocusDef[];
   writable: boolean;
 }
 
@@ -92,6 +93,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** A domain's own declaration, read from its index.md. The `type` is open —
+ *  `strategy`, `topic`, `thesis`, whatever a client's corpus declares. */
+export interface FocusDef {
+  value: string;
+  label: string;
+  type: string;
+  folder: string;
+  path: string;
+}
+
 export interface TreeNode {
   name: string;
   path: string;
@@ -106,11 +117,11 @@ export const api = {
   // `_domain_of`, so the client never learns which storage layout it is talking
   // to. Sending `<domain>/` as a raw prefix worked for reach-edu and silently
   // matched nothing in a corpus this tool wrote.
-  sources: (domain = '', search = '') =>
-    get<{ rows: SourceRow[]; total: number; domains: string[] }>('/api/sources', {
-      domain,
-      search
-    }),
+  sources: (domain = '', search = '', focus = '') =>
+    get<{ rows: SourceRow[]; total: number; domains: string[]; focused_total: number }>(
+      '/api/sources',
+      { domain, search, focus }
+    ),
   source: (path: string) => get<string>('/api/source', { path }),
   capture: (url: string, domain: string, full: boolean) =>
     post<CaptureResult>('/api/capture', { url, domain: domain || null, full }),

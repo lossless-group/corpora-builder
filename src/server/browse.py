@@ -46,6 +46,12 @@ class SourceRow:
     binary_state: str = ""
     binary_bytes: int = 0
     binary_optimized: bool = False
+    #: The `domains:` frontmatter list — `strategy:workforce-development` and
+    #: friends. NOT the same thing as `domain` above: `domain` is the folder the
+    #: bytes sit in, this is the emphasis the operator put on them. A source's
+    #: folder says where it lives; this says which piece of work says "mainly
+    #: look here" when you are drafting.
+    domains: list[str] = field(default_factory=list)
     #: Set when the file could not be parsed. Present in the results regardless.
     error: str = ""
 
@@ -58,6 +64,10 @@ class Listing:
     rows: list[SourceRow] = field(default_factory=list)
     total: int = 0
     domains: list[str] = field(default_factory=list)
+    #: How many of `total` the active focus emphasises. Zero when none is set.
+    #: Reported alongside the total rather than replacing it, because the count
+    #: that matters while drafting is *both*: "34 to start with, 845 available".
+    focused_total: int = 0
 
 
 def _domain_of(path: str) -> str:
@@ -103,6 +113,18 @@ def list_domains(store: CorpusStore, prefix: str = "") -> tuple[int, list[str]]:
     return len(keys), sorted({_domain_of(k) for k in keys})
 
 
+def _newest_first(keys: list[str]) -> list[str]:
+    """Ordered by the filename's date prefix, newest first.
+
+    Sorted by the filename rather than `fetched_at` because `fetched_at` is
+    inside the file and the whole point is not to open it. The naming convention
+    writes that prefix *from* `fetched_at`, so the orders agree; a file predating
+    the convention sorts by name, which is an honest fallback rather than a
+    confidently wrong date.
+    """
+    return sorted(keys, key=lambda k: k.rsplit("/", 1)[-1], reverse=True)
+
+
 def _page_keys(keys: list[str], offset: int, limit: int) -> list[str]:
     """The window of keys to actually read, newest first.
 
@@ -112,8 +134,104 @@ def _page_keys(keys: list[str], offset: int, limit: int) -> list[str]:
     agree; a file predating the convention sorts by name, which is the honest
     fallback rather than a wrong date.
     """
-    ordered = sorted(keys, key=lambda k: k.rsplit("/", 1)[-1], reverse=True)
-    return ordered[offset : offset + limit]
+    return _newest_first(keys)[offset : offset + limit]
+
+
+#: Files that describe the corpus rather than being captured material.
+#: An `index.md` is a domain's statement of the case; `AGENTS.md` and `README.md`
+#: are instructions. Listing them as sources renders them with no URL and
+#: `status: candidate`, indistinguishable from something we found and never
+#: fetched — 13 such rows in reach-edu, inflating "845 sources" by that much.
+NOT_SOURCES = ("index.md", "AGENTS.md", "README.md")
+
+DOMAIN_INDEX = "index.md"
+
+
+@dataclass
+class DomainDef:
+    """A domain's own declaration of what it is.
+
+    Read from the `index.md` sitting in the folder, which carries `type`, `slug`
+    and `title`. **This is the only join between a `domains:` tag and a folder,
+    and it has to be**: the type vocabulary is open — reach-edu uses `strategy`
+    and `topic`, another client uses `thesis` — and no rule maps a tag to a
+    folder across it. `strategy`/`strategies` would tempt a `+s`; `thesis`/
+    `theses` breaks it immediately, and the next client breaks whatever replaces
+    that. The corpus already states the answer, so it is read rather than guessed.
+
+    Nesting comes free for the same reason: the folder is wherever the `index.md`
+    is, at any depth.
+    """
+
+    folder: str
+    type: str
+    slug: str
+    title: str
+    path: str
+
+    @property
+    def value(self) -> str:
+        """The `domains:` tag this folder answers to."""
+        return f"{self.type}:{self.slug}"
+
+    def to_json(self) -> dict:
+        return {
+            "value": self.value,
+            "label": self.title or self.slug,
+            "type": self.type,
+            "folder": self.folder,
+            "path": self.path,
+        }
+
+
+def list_domain_defs(store: CorpusStore, prefix: str = "") -> list[DomainDef]:
+    """Every domain that declares itself, by reading its `index.md`.
+
+    One read per definition — nine in reach-edu — rather than one per source.
+    A corpus with no `index.md` anywhere returns nothing, and the surfaces that
+    depend on this simply do not appear, which is the honest outcome.
+    """
+    keys = [k for k in store.list(prefix) if k.rsplit("/", 1)[-1] == DOMAIN_INDEX]
+    defs: list[DomainDef] = []
+    if not keys:
+        return defs
+
+    blobs: dict[str, bytes] = {}
+    with ThreadPoolExecutor(max_workers=min(16, len(keys))) as pool:
+        futures = {pool.submit(store.read, k): k for k in keys}
+        for fut in as_completed(futures):
+            try:
+                blobs[futures[fut]] = fut.result()
+            except Exception:  # noqa: BLE001 - a missing definition is not fatal
+                continue
+
+    for key, blob in blobs.items():
+        try:
+            src = SourceFile.parse(blob.decode("utf-8", errors="replace"))
+        except Exception:  # noqa: BLE001
+            continue
+        kind = str(src.unknown.get("type", "") or "")
+        slug = str(src.unknown.get("slug", "") or "")
+        if not kind or not slug:
+            continue
+        defs.append(
+            DomainDef(
+                folder=_domain_of(key),
+                type=kind,
+                slug=slug,
+                title=src.title,
+                path=key,
+            )
+        )
+    return sorted(defs, key=lambda d: (d.type, d.title.lower() or d.slug))
+
+
+def focus_folder(focus: str, defs: list[DomainDef]) -> str:
+    """The folder a `type:slug` names, per the corpus's own declarations."""
+    for d in defs:
+        if d.value == focus:
+            return d.folder
+    return ""
 
 
 def _in_domain(key: str, domain: str) -> bool:
@@ -138,18 +256,52 @@ def list_sources(
     offset: int = 0,
     bin_store: BinStore | None = None,
     domain: str = "",
+    focus: str = "",
 ) -> Listing:
-    """Every source under `prefix` (a key prefix) and `domain` (a folder), newest first."""
-    all_keys = [k for k in store.list(prefix) if k.endswith(".md")]
+    """Every source under `prefix` and `domain`, newest first — or focus-ordered.
+
+    `focus` is emphasis, NOT a filter. The whole corpus is still returned; the
+    focused sources simply come first. That distinction is the point: when you
+    are drafting a strategy document you want everything the client has, with a
+    pointer saying *mainly look here*. A filter that hid the other 591 sources
+    would remove exactly the access the tag exists to preserve.
+    """
+    all_keys = [
+        k
+        for k in store.list(prefix)
+        if k.endswith(".md") and k.rsplit("/", 1)[-1] not in NOT_SOURCES
+    ]
     if domain:
         all_keys = [k for k in all_keys if _in_domain(k, domain)]
+
+    focused_total = 0
+    defs = list_domain_defs(store, prefix) if focus else []
+    if focus:
+        folder = focus_folder(focus, defs)
+        # Partitioned on the KEY, so ordering the whole corpus costs no reads.
+        # Today that is exact: all 241 tagged sources sit in the folder their tag
+        # names, and none carries a second tag. The day one does, this ordering
+        # would miss it — the fix is an index, not 845 reads. See
+        # `context-v/specs/Strategy-Focus.md`.
+        hit = [k for k in all_keys if _in_domain(k, folder)]
+        rest = [k for k in all_keys if not _in_domain(k, folder)]
+        focused_total = len(hit)
+        # Newest first WITHIN each partition. Concatenating the raw key order
+        # here served the focused set alphabetically, so the oldest source in the
+        # strategy led the page — focus is about which sources come first, not
+        # about abandoning the order the rest of the app uses.
+        all_keys = _newest_first(hit) + _newest_first(rest)
     domains = {_domain_of(k) for k in all_keys}
     total = len(all_keys)
 
     # A search has to look at everything. A page load does not, and pretending
     # otherwise costs 845 network reads to show 50 rows.
     paged = not search
-    keys = _page_keys(all_keys, offset, limit) if paged else all_keys
+    if paged and focus:
+        # Focus already imposed the order; re-sorting by filename would undo it.
+        keys = all_keys[offset : offset + limit]
+    else:
+        keys = _page_keys(all_keys, offset, limit) if paged else all_keys
 
     rows: list[SourceRow] = []
 
@@ -204,6 +356,7 @@ def list_sources(
                 binary_state=bin_state,
                 binary_bytes=bin_size,
                 binary_optimized=bin_opt,
+                domains=list(source.domains),
             )
         )
 
@@ -213,16 +366,31 @@ def list_sources(
             r
             for r in rows
             if needle in r.title.lower() or needle in r.excerpt.lower() or needle in r.path.lower()
+            # The `domains:` tag is searchable text too. Typing "literacy" should
+            # reach a source that carries `strategy:adult-literacy-numeracy` even
+            # when neither its title nor its excerpt says the word.
+            or any(needle in d.lower() for d in r.domains)
         ]
 
     if paged:
         # Already ordered and windowed by key; re-slicing would drop rows.
-        return Listing(rows=rows, total=total, domains=sorted(domains))
+        return Listing(rows=rows, total=total, domains=sorted(domains), focused_total=focused_total)
 
     # Newest fetch first — the question a corpus browser answers most often is
     # "what did I just add". Damaged rows have no fetched_at and sort last.
-    rows.sort(key=lambda r: r.fetched_at, reverse=True)
-    return Listing(rows=rows[offset : offset + limit], total=len(rows), domains=sorted(domains))
+    if focus:
+        folder = focus_folder(focus, defs)
+        # Stable: focused first, then newest. `sort` is stable in Python, so the
+        # fetched_at order above survives inside each partition.
+        rows.sort(key=lambda r: not (_in_domain(r.path, folder) or focus in r.domains))
+    else:
+        rows.sort(key=lambda r: r.fetched_at, reverse=True)
+    return Listing(
+        rows=rows[offset : offset + limit],
+        total=len(rows),
+        domains=sorted(domains),
+        focused_total=focused_total,
+    )
 
 
 def load_source(store: CorpusStore, path: str) -> str:

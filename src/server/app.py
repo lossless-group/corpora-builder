@@ -22,7 +22,7 @@ from src.binary.store import BinStore
 from src.capture import JinaFetcher, add_source
 from src.feed.git_source import GitChangeSource, GitRepoError
 from src.feed.render import to_json
-from src.server.browse import list_domains, list_sources, load_source
+from src.server.browse import list_domain_defs, list_domains, list_sources, load_source
 from src.server.tree import build_tree
 from src.store import CorpusStore, KeyNotFound
 
@@ -89,6 +89,10 @@ def create_app(
             "label": label,
             "total": total,
             "domains": domains,
+            # Read from each domain's own index.md — nine reads, not 845 —
+            # because the type vocabulary is open and no rule maps a tag to a
+            # folder across it. See DomainDef.
+            "focuses": [d.to_json() for d in list_domain_defs(store)],
             "writable": writable,
         }
 
@@ -106,6 +110,7 @@ def create_app(
     def sources(
         prefix: str = Query(""),
         domain: str = Query("", description="filter by domain folder, layout-independent"),
+        focus: str = Query("", description="emphasise this `type:slug`; orders, never excludes"),
         search: str = Query(""),
         limit: int = Query(200, ge=1, le=2000),
         offset: int = Query(0, ge=0),
@@ -114,6 +119,7 @@ def create_app(
             store,
             prefix=prefix,
             domain=domain,
+            focus=focus,
             search=search,
             limit=limit,
             offset=offset,
@@ -123,6 +129,7 @@ def create_app(
             "rows": [r.as_dict() for r in listing.rows],
             "total": listing.total,
             "domains": listing.domains,
+            "focused_total": listing.focused_total,
         }
 
     @app.get("/api/source", response_class=PlainTextResponse)

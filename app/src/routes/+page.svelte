@@ -2,7 +2,8 @@
   import { mode } from '$lib/mode.svelte';
   import DomainCombo from '$lib/components/DomainCombo.svelte';
   import CorpusTree from '$lib/components/CorpusTree.svelte';
-  import type { TreeNode } from '$lib/api';
+  import type { TreeNode, FocusDef } from '$lib/api';
+  import { Latest } from '$lib/latest';
   import { SvelteSet } from 'svelte/reactivity';
   import { onMount } from 'svelte';
   import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
@@ -23,6 +24,19 @@
   let captureError = $state('');
 
   let tab = $state<'sources' | 'files' | 'changes'>('sources');
+
+  // ── Focus: "mainly look here" ──────────────────────────────────────────
+  // Emphasis, not a filter. Everything the client has stays in the list; the
+  // focused sources simply come first. A filter would remove exactly the access
+  // the `domains:` tag exists to preserve.
+  let focus = $state('');
+  let focusedTotal = $state(0);
+
+  // Every request takes a number and stale answers are dropped. A search reads
+  // the whole corpus (1.2-5.8s) while an unsearched page reads fifty files
+  // (0.48s), so clearing the box issues a fast request while a slow one is
+  // still in flight — and without this, whichever lands last wins.
+  const inflight = new Latest();
 
   // ── The Files surface ──────────────────────────────────────────────────
   // Fetched once and kept: the tree is derived from keys, so it is one cheap
@@ -121,9 +135,17 @@
   }
 
   async function load() {
-    const data = await api.sources(domainFilter, search);
+    const data = await inflight.run(() => api.sources(domainFilter, search, focus));
+    if (!data) return; // superseded — the operator has moved on
     rows = data.rows;
     total = data.total;
+    focusedTotal = data.focused_total;
+  }
+
+  function toggleFocus(value: string) {
+    focus = focus === value ? '' : value;
+    tab = 'sources';
+    load();
   }
 
   function debounced() {
@@ -190,6 +212,26 @@
       />
     </div>
   </div>
+
+  {#if (meta?.focuses ?? []).length}
+    <!-- "Mainly look here." Prominent by design: this is the first thing you
+         reach for when drafting against a strategy, and the labels are the
+         corpus's own declared titles rather than slugs. -->
+    <div class="focuses">
+      {#each meta?.focuses ?? [] as f (f.value)}
+        <button
+          class="focus"
+          class:on={focus === f.value}
+          title="{f.type}: {f.folder}"
+          aria-pressed={focus === f.value}
+          onclick={() => toggleFocus(f.value)}>{f.label}</button
+        >
+      {/each}
+      {#if focus}
+        <button class="focus clear" onclick={() => toggleFocus(focus)}>clear</button>
+      {/if}
+    </div>
+  {/if}
 
   {#if meta?.writable}
     <form class="bar capture" onsubmit={capture}>
@@ -291,7 +333,19 @@
       {/if}
     {:else}
 
-    <p class="count">{total} source{total === 1 ? '' : 's'}{rows.length < total ? ` · showing ${rows.length}` : ''}</p>
+    <!-- Both numbers, always. "34 sources" would read as a filter; the whole
+         point of a focus is that the other 811 are still there. -->
+    <p class="count">
+      {#if focus && focusedTotal}
+        <strong>{focusedTotal}</strong> to start with · {total} available{rows.length < total
+          ? ` · showing ${rows.length}`
+          : ''}
+      {:else}
+        {total} source{total === 1 ? '' : 's'}{rows.length < total
+          ? ` · showing ${rows.length}`
+          : ''}
+      {/if}
+    </p>
 
     <ul>
       {#each rows as row (row.path)}
@@ -394,6 +448,14 @@
   .e { font-family: var(--font-reading); font-size: 13px; color: var(--color-text-muted); }
   li.err .t { color: var(--color-warn-text); }
   .x { color: var(--color-text-muted); font-size: 11px; margin-bottom: 4px; word-break: break-all; }
+
+  /* Chips, not tabs: several may be on-topic at once and none of them is a
+     mode. Sized up from the 11px metadata scale because this is a control the
+     operator reaches for first, not a label they read in passing. */
+  .focuses { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--color-border); }
+  .focus { font-size: 12px; border-radius: var(--radius-pill); color: var(--color-text-muted); }
+  .focus.on { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
+  .focus.clear { color: var(--color-warn-text); }
 
   .tabs { display: flex; gap: 6px; margin: 0 0 var(--space-md); }
   .tabs button { border-radius: var(--radius-pill); color: var(--color-text-muted); font-size: 12px; }
