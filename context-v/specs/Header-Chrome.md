@@ -90,6 +90,21 @@ Vibrant mode · click for Light
 The cycle is `light → dark → vibrant → light`, and the tooltip is generated from
 it rather than written out, so the two cannot disagree.
 
+### 5. A partial payload degrades to the name we have
+
+`label` — the server's own name for the corpus — predates the `workspace` field
+and is still sent. When a client is holding a `meta` older than that field, the
+trigger shows `label` rather than an em dash.
+
+This was reported from the running app: Vite HMR swapped the new component in
+without re-running the initial fetch, so `meta` came from a sidecar that had no
+`workspace` key. A hard reload fixes that instance; **rendering nothing while a
+usable name sat unused beside it is the part that was actually wrong.**
+
+And a missing `workspace` is **not** the same as a local folder. Saying "local
+folder" because a field was absent is a confident wrong answer about where
+somebody's corpus lives, so the footer says nothing instead.
+
 ## Tests
 
 | ID | Given / When / Then |
@@ -99,6 +114,7 @@ it rather than written out, so the two cannot disagree.
 | `HEADER-03` | Given a workspace, when `/api/meta` is called, then slug and display name are separate fields rather than one rendered label |
 | `HEADER-04` | Given each mode in turn, when the next mode is asked for, then the cycle is light → dark → vibrant → light |
 | `HEADER-05` | Given each mode, when its tooltip is generated, then it names the current mode and the one a click produces, and never disagrees with the cycle |
+| `HEADER-06` | Given a payload with no `workspace` field, when the trigger renders, then it falls back to `label`; and the footer claims a storage location only when one was actually reported |
 
 ## Related
 

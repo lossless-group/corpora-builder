@@ -19,17 +19,32 @@
    * is not a rewrite.
    */
   import type { WorkspaceInfo } from '$lib/api';
+  import { workspaceLabel, workspaceStorage } from '$lib/workspace';
 
   interface Props {
     workspace: WorkspaceInfo | null;
+    /** The server's own name for the corpus. Predates `workspace` and is the
+     *  fallback when a client is holding a payload older than that field. */
+    label?: string;
     writable?: boolean;
   }
-  let { workspace, writable = false }: Props = $props();
+  let { workspace, label: metaLabel = '', writable = false }: Props = $props();
 
   let open = $state(false);
   let el = $state<HTMLDivElement | undefined>(undefined);
 
-  const label = $derived(workspace?.display_name || '—');
+  /**
+   * Degrade to the name we have always had, never to nothing.
+   *
+   * Reported from the running app as a blank trigger: Vite HMR swapped this
+   * component in without re-running the initial fetch, so `meta` was the object
+   * returned by a sidecar that predated the `workspace` field. A hard reload
+   * fixes that instance; showing an em dash where `label` was sitting unused is
+   * the part that was actually wrong.
+   */
+  const label = $derived(workspaceLabel(workspace, metaLabel));
+  /** Only claim to know where the bytes live when we were actually told. */
+  const storage = $derived(workspaceStorage(workspace));
 
   function onDocPointer(ev: PointerEvent) {
     if (open && el && !el.contains(ev.target as Node)) open = false;
@@ -68,14 +83,14 @@
       <li>
         <button type="button" class="row active" role="option" aria-selected="true">
           <span class="row-label">{label}</span>
-          <!-- The slug, visible only here. -->
-          <span class="row-slug">{workspace?.slug}</span>
+          <!-- The slug, visible only here — and omitted rather than blank when
+               the payload did not carry one. -->
+          {#if workspace?.slug}<span class="row-slug">{workspace.slug}</span>{/if}
           <span class="check" aria-hidden="true">✓</span>
         </button>
       </li>
       <li class="foot">
-        {workspace?.bucket ? `bucket ${workspace.bucket}` : 'local folder'} ·
-        {writable ? 'writable' : 'read-only'}
+        {storage ? `${storage} · ` : ''}{writable ? 'writable' : 'read-only'}
       </li>
     </ul>
   {/if}

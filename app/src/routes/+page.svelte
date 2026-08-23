@@ -233,7 +233,11 @@
 
     <!-- Top right, as in augment-it's shell: which corpus, then the mode. -->
     <div class="chrome">
-      <WorkspaceMenu workspace={meta?.workspace ?? null} writable={meta?.writable ?? false} />
+      <WorkspaceMenu
+        workspace={meta?.workspace ?? null}
+        label={meta?.label ?? ''}
+        writable={meta?.writable ?? false}
+      />
       <ModeToggle />
     </div>
   </div>
