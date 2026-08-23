@@ -92,6 +92,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface TreeNode {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  count: number;
+  children: TreeNode[];
+}
+
 export const api = {
   meta: () => get<Meta>('/api/meta'),
   // `domain` is a folder name, not a key prefix — the server maps it through
@@ -106,6 +114,9 @@ export const api = {
   source: (path: string) => get<string>('/api/source', { path }),
   capture: (url: string, domain: string, full: boolean) =>
     post<CaptureResult>('/api/capture', { url, domain: domain || null, full }),
+
+  /** The whole corpus as a folder tree. One key listing, no file bodies. */
+  tree: () => get<{ total: number; tree: TreeNode[] }>('/api/tree'),
 
   changes: (repo: string, prefix = '', limit = 20) =>
     get<ChangePage>('/api/changes', { repo, prefix, limit: String(limit) }),

@@ -97,13 +97,20 @@ for (const [name, steps] of Object.entries(ramps)) {
 
 // D5 — a var() naming nothing paints nothing, silently. augment-it counted 33
 // of these; they are invisible in review because the CSS is syntactically fine.
-const defined = new Set([...css.matchAll(/^\s*(--[a-z0-9_-]+):/gm)].map((m) => m[1]));
+const theme = new Set([...css.matchAll(/^\s*(--[a-z0-9_-]+):/gm)].map((m) => m[1]));
 for (const file of components) {
   const src = readFileSync(file, 'utf8');
+  // A component may declare its own properties for values that are genuinely
+  // nobody else's business — `--depth` on a tree row, set inline per level.
+  // augment-it calls these Tier 4 and added them after finding that forbidding
+  // the honest option does not prevent the value, it only prevents the value
+  // from having a name. So the rule is "declared somewhere reachable", not
+  // "declared in the theme": both `--x: 1` and `style="--x: {n}"` count.
+  const local = new Set([...src.matchAll(/(--[a-z0-9_-]+)\s*:/g)].map((m) => m[1]));
   src.split('\n').forEach((line, i) => {
     for (const [, tok] of line.matchAll(/var\((--[a-z0-9_-]+)/g))
-      if (!defined.has(tok))
-        fails.push(`D5 ${relative(ROOT, file)}:${i + 1} reads ${tok}, which is not declared`);
+      if (!theme.has(tok) && !local.has(tok))
+        fails.push(`D5 ${relative(ROOT, file)}:${i + 1} reads ${tok}, declared nowhere`);
   });
 }
 

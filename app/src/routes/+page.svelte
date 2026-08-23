@@ -1,6 +1,9 @@
 <script lang="ts">
   import { mode } from '$lib/mode.svelte';
   import DomainCombo from '$lib/components/DomainCombo.svelte';
+  import CorpusTree from '$lib/components/CorpusTree.svelte';
+  import type { TreeNode } from '$lib/api';
+  import { SvelteSet } from 'svelte/reactivity';
   import { onMount } from 'svelte';
   import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
 
@@ -19,7 +22,53 @@
   let captured = $state<CaptureResult | null>(null);
   let captureError = $state('');
 
-  let tab = $state<'sources' | 'changes'>('sources');
+  let tab = $state<'sources' | 'files' | 'changes'>('sources');
+
+  // ── The Files surface ──────────────────────────────────────────────────
+  // Fetched once and kept: the tree is derived from keys, so it is one cheap
+  // call, and re-fetching it on every tab switch would be motion without gain.
+  let tree = $state<TreeNode[] | null>(null);
+  let treeTotal = $state(0);
+  let treeError = $state('');
+  // Open folders, by path. Root children start open; everything deeper is a
+  // request — 944 rows at once is the same failure as 112 <option>s.
+  let openDirs = $state(new SvelteSet<string>());
+
+  async function loadTree() {
+    if (tree) return;
+    try {
+      const data = await api.tree();
+      tree = data.tree;
+      treeTotal = data.total;
+      // Only `live/` — the corpus's actual content. `bin/` is content-addressed,
+      // so its contents are the point and its structure carries nothing; 92 rows
+      // of hex digest is not a useful first impression of somebody's corpus.
+      openDirs.add('live/');
+    } catch (err) {
+      treeError = String(err);
+    }
+  }
+
+  function toggleDir(path: string) {
+    openDirs.has(path) ? openDirs.delete(path) : openDirs.add(path);
+  }
+
+  /** A folder narrows the Sources list; a file opens in the viewer. */
+  async function pickNode(node: TreeNode) {
+    if (node.is_dir) {
+      // The tree speaks keys (`live/funders/x/`); the filter speaks domains.
+      // `_domain_of` strips exactly this, so the client does the mirror of it
+      // rather than inventing a second notion of what a domain is.
+      domainFilter = node.path
+        .replace(/^live\//, '')
+        .replace(/\/sources\/$/, '/')
+        .replace(/\/$/, '');
+      tab = 'sources';
+      await load();
+      return;
+    }
+    await view({ path: node.path, title: node.name } as SourceRow);
+  }
   let changes = $state<Change[]>([]);
   let changesTruncated = $state(false);
   let changesRepo = $state('');
@@ -174,10 +223,20 @@
 
     <nav class="tabs">
       <button class:on={tab === 'sources'} onclick={() => (tab = 'sources')}>Sources</button>
+      <button class:on={tab === 'files'} onclick={() => { tab = 'files'; loadTree(); }}>Files</button>
       <button class:on={tab === 'changes'} onclick={() => (tab = 'changes')}>What changed</button>
     </nav>
 
-    {#if tab === 'changes'}
+    {#if tab === 'files'}
+      {#if treeError}
+        <p class="note err">Could not read the corpus: {treeError}</p>
+      {:else if !tree}
+        <p class="note">Reading the corpus…</p>
+      {:else}
+        <p class="count">{treeTotal} objects</p>
+        <CorpusTree nodes={tree} open={openDirs} ontoggle={toggleDir} onpick={pickNode} />
+      {/if}
+    {:else if tab === 'changes'}
       <form class="repo" onsubmit={(e) => { e.preventDefault(); loadChanges(); }}>
         <input
           bind:value={changesRepo}

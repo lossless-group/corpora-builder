@@ -23,6 +23,7 @@ from src.capture import JinaFetcher, add_source
 from src.feed.git_source import GitChangeSource, GitRepoError
 from src.feed.render import to_json
 from src.server.browse import list_domains, list_sources, load_source
+from src.server.tree import build_tree
 from src.store import CorpusStore, KeyNotFound
 
 STATIC = Path(__file__).parent / "static"
@@ -90,6 +91,16 @@ def create_app(
             "domains": domains,
             "writable": writable,
         }
+
+    @app.get("/api/tree")
+    def tree() -> dict[str, object]:
+        """The corpus as a folder tree — one `list()` call, zero file reads.
+
+        Every key, not just the `.md` wrappers: `bin/` is part of the corpus and
+        a client asking where their PDFs went deserves to see them.
+        """
+        keys = store.list("")
+        return {"total": len(keys), "tree": [n.to_json() for n in build_tree(keys)]}
 
     @app.get("/api/sources")
     def sources(
