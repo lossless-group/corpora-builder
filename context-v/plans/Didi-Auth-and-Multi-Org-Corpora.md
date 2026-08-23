@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.1.0
+at_semantic_version: 0.0.2.0
 status: Draft
 site_uuid: 3094ab40-f457-48fb-8b10-0649600c35f6
 hex_code: 3lubaj
@@ -214,19 +214,50 @@ no structural meaning."*
    (`domain:strategy:workforce-development`) needs the value, the parser, the
    filter and the Pagefind filter key to agree on arity. Small, but it is four
    places, and the Pagefind bundle would need rebuilding.
-2. **"Cascade" already means something else, next door.** In
-   `Flexible-Entity-Relationships` Ruling 2b a cascade is **a credential lending
-   act across several entities** — *"a set of loans sharing a `cascade_id`"*,
-   declared by a lender, explicitly *not* structural. Here it means the colon
-   chain composes through levels. **Same word, adjacent specs, opposite
-   emphasis** — one of them has to be renamed before either is written down
-   again. Gate 2.
-3. **The tuple warning.** That spec says of `user:org:workspace:project`: *"Do
+2. **The cascade has to actually cascade — and this repo already does it once.**
+
+   A first draft of this plan called the word a collision with
+   `Flexible-Entity-Relationships` Ruling 2b, where a cascade is a credential
+   lending act, and proposed renaming one. **That was wrong.** It is one concept:
+
+   > **A cascade is declared propagation, not structural inheritance.** Someone
+   > asserts a relationship — by lending to a named set of entities, or by naming
+   > a chain — and what follows flows along it. What makes it a cascade rather
+   > than inheritance is that no stored structure decides it.
+
+   The credential sense is the **extended** one: it carries a cap, a wind-down,
+   and an end that pulls every loan at once, because authority needs those and a
+   name does not. The syntax sense is the plainer general case. Both keep the
+   same contrast with Okta — there the directory decides what flows, here a
+   person does. And both sit *beside* Ruling 1 rather than against it: hierarchy
+   is not in code, but propagation is still declarable.
+
+   **`_in_domain` is already a cascade in exactly this sense:**
+
+   ```python
+   return d == domain or d.startswith(domain + "/")
+   ```
+
+   Filter by `funders/` and you get `funders/ascendium-education` — declared by
+   the path somebody chose, enforced by no schema. The combobox's segment-wise
+   Backspace exists to walk *up* that cascade, which is why `funders/` is a legal
+   filter value rather than a malformed one.
+
+   So the work is not to invent cascading; it is to give the **tag** the same
+   cascade the **path** already has. Focusing `domain:strategy` must match a
+   source tagged `domain:strategy:workforce-development`, by the same prefix rule
+   — which means `DomainDef.value`, the focus comparison, and the Pagefind filter
+   key all move from an equality test to a prefix test on a chain. Four places,
+   one rule, and a bundle rebuild.
+3. **Prefix-matching a chain is not free at the edges.** `strategy` is a prefix
+   of `strategy-two`, so the test has to be segment-aware — `d == q or
+   d.startswith(q + ":")` — the same trap `_in_domain` already avoids with `/`.
+4. **The tuple warning.** That spec says of `user:org:workspace:project`: *"Do
    not store it as a tuple — the copies would disagree."* A `domains:` tag in a
    source file is not the same thing — the file *is* the record, and there is no
    second copy to disagree — but the distinction is thin enough to state out
    loud rather than leave a future reader to infer.
-4. **augment-it derives the folder with `` `${type}s` ``.** Per
+5. **augment-it derives the folder with `` `${type}s` ``.** Per
    [[../issues/Need-Elegant-Resolution-to-Source-Pointers-vs-Master]], its
    `DOMAIN_FOLDERS` table plus a pluralising fallback is the rule this repo
    refuses. A chained syntax makes that fallback wrong more often, so this catch
@@ -238,10 +269,12 @@ Ordered so that each is useful alone and nothing waits on a gate it could have
 avoided.
 
 ### Phase 0 — decide the schema *(ai-labs, no code)*
-Gate 1 (`entities` vs `organizations`+`workspaces`) and Gate 2 (the word
-"cascade"). Amend the canonical spec; nothing below starts first. This is Phase A
-of the 2026-08-08 plan, with the org-identity and multi-select additions folded
-in.
+Gate 1 — `entities` vs `organizations` + `workspaces` — and nothing else. The
+"cascade" question resolved itself into a definition rather than a rename, and
+that definition is now recorded in
+[[../../../context-v/specs/Flexible-Entity-Relationships-to-Mirror-Messy-IRL-Collaboration]].
+Amend the canonical spec; nothing below starts first. This is Phase A of the
+2026-08-08 plan with the org-identity and multi-select additions folded in.
 
 ### Phase 1 — `normalized_url` backfill *(corpora-builder, local)*
 511 filed sources, no network, reversible. Wanted by the multibox work and by
