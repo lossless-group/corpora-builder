@@ -30,7 +30,7 @@
   // focused sources simply come first. A filter would remove exactly the access
   // the `domains:` tag exists to preserve.
   let focus = $state('');
-  let focusedTotal = $state(0);
+  let corpusTotal = $state(0);
 
   // Every request takes a number and stale answers are dropped. A search reads
   // the whole corpus (1.2-5.8s) while an unsearched page reads fifty files
@@ -139,8 +139,26 @@
     if (!data) return; // superseded — the operator has moved on
     rows = data.rows;
     total = data.total;
-    focusedTotal = data.focused_total;
+    corpusTotal = data.corpus_total;
   }
+
+  /** Chips grouped by their declared type, so a row of them says what it IS.
+   *  The operator had to infer "oh, the tags are strategies" from the labels —
+   *  which they could only do because they already knew the corpus. The types
+   *  are open (`strategy`, `topic`, `thesis`), so the heading is read from the
+   *  data rather than hardcoded. */
+  let focusGroups = $derived.by(() => {
+    const by = new Map<string, FocusDef[]>();
+    for (const f of meta?.focuses ?? []) {
+      if (!by.has(f.type)) by.set(f.type, []);
+      by.get(f.type)!.push(f);
+    }
+    return [...by.entries()];
+  });
+
+  let focusLabel = $derived(
+    (meta?.focuses ?? []).find((f) => f.value === focus)?.label ?? ''
+  );
 
   function toggleFocus(value: string) {
     focus = focus === value ? '' : value;
@@ -217,20 +235,23 @@
     <!-- "Mainly look here." Prominent by design: this is the first thing you
          reach for when drafting against a strategy, and the labels are the
          corpus's own declared titles rather than slugs. -->
-    <div class="focuses">
-      {#each meta?.focuses ?? [] as f (f.value)}
-        <button
-          class="focus"
-          class:on={focus === f.value}
-          title="{f.type}: {f.folder}"
-          aria-pressed={focus === f.value}
-          onclick={() => toggleFocus(f.value)}>{f.label}</button
-        >
-      {/each}
-      {#if focus}
-        <button class="focus clear" onclick={() => toggleFocus(focus)}>clear</button>
-      {/if}
-    </div>
+    {#each focusGroups as [kind, items] (kind)}
+      <div class="focuses">
+        <span class="kind">{kind}</span>
+        {#each items as f (f.value)}
+          <button
+            class="focus"
+            class:on={focus === f.value}
+            title="{f.type}: {f.folder}"
+            aria-pressed={focus === f.value}
+            onclick={() => toggleFocus(f.value)}>{f.label}</button
+          >
+        {/each}
+        {#if focus && items.some((i) => i.value === focus)}
+          <button class="focus clear" onclick={() => toggleFocus(focus)}>clear</button>
+        {/if}
+      </div>
+    {/each}
   {/if}
 
   {#if meta?.writable}
@@ -336,8 +357,10 @@
     <!-- Both numbers, always. "34 sources" would read as a filter; the whole
          point of a focus is that the other 811 are still there. -->
     <p class="count">
-      {#if focus && focusedTotal}
-        <strong>{focusedTotal}</strong> to start with · {total} available{rows.length < total
+      {#if total !== corpusTotal}
+        <strong>{total}</strong>
+        {focusLabel ? `in ${focusLabel}` : 'matching'} · {corpusTotal} in the corpus{rows.length <
+        total
           ? ` · showing ${rows.length}`
           : ''}
       {:else}
@@ -452,7 +475,10 @@
   /* Chips, not tabs: several may be on-topic at once and none of them is a
      mode. Sized up from the 11px metadata scale because this is a control the
      operator reaches for first, not a label they read in passing. */
-  .focuses { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 16px; border-bottom: 1px solid var(--color-border); }
+  .focuses { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 6px 16px; }
+  .focuses:last-of-type { border-bottom: 1px solid var(--color-border); padding-bottom: 8px; }
+  /* The declared type, so a row of chips says what it is without a hover. */
+  .kind { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--color-text-muted); min-width: 62px; }
   .focus { font-size: 12px; border-radius: var(--radius-pill); color: var(--color-text-muted); }
   .focus.on { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
   .focus.clear { color: var(--color-warn-text); }

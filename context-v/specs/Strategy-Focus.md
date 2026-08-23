@@ -1,6 +1,6 @@
 ---
 title: "Strategy Focus"
-lede: "\"Mainly look here\" is emphasis, not membership. Focusing a strategy reorders the corpus; it never hides the rest of it."
+lede: "A strategy chip narrows the list and compounds with search. The corpus count rides alongside, so a subset always says what it is a subset of."
 publish: true
 date_created: 2026-08-22
 date_modified: 2026-08-22
@@ -54,15 +54,24 @@ everything equally emphasised — which is why this spec does not.
 
 ## The one rule everything follows from
 
-**Focus orders. It never excludes.**
+**Focus narrows, and compounds with search.**
 
-The corpus filter already in the app is exclusive: pick
-`strategies/workforce-development` and the other 591 sources vanish. That is the
-right behaviour for *filtering* and exactly the wrong behaviour here, because
-it removes the access the tag exists to preserve. Both mechanisms stay; they are
-different verbs.
+`apprenticeship` → 56. `apprenticeship` + *Workforce Development* → 12.
+`apprenticeship` + *Rural Income Boosts* → 4.
 
-The count reflects it: **"82 to start with, 832 available"**, never "82 sources".
+**This is the second version of this rule.** The first read "mainly look here" as
+*emphasis*: focus returned everything, ordered, with the tagged sources first.
+That is a defensible reading of the words and it was wrong in practice. Driven in
+a real browser it was indistinguishable from nothing happening — 200 rows on
+screen, 82 matches, so only the top of the list moved and rows 83–200 were
+unrelated. The operator's report was *"I searched a strategy, a tag cloud came
+up, I clicked a tag, I didn't see it further filter."*
+
+What preserves access to the rest of the corpus is not that the list stays whole.
+It is that **the toggle is a toggle** — one click back — and that `corpus_total`
+rides alongside `total`, so a narrowed list always says what it is a subset of:
+**"12 in Workforce Development · 832 in the corpus"**. A single number is what
+makes a filter look like the whole world.
 
 ## Behaviours
 
@@ -72,10 +81,10 @@ Typing `literacy` reaches a source carrying `strategy:adult-literacy-numeracy`
 even when neither its title nor its excerpt contains the word. The tag is part of
 what a source *says about itself*, so search treats it that way.
 
-### 2. Focus reorders, and reports both numbers
+### 2. Focus narrows, and reports both numbers
 
-`focus=strategy:workforce-development` returns the whole listing with the
-emphasised sources first, plus `focused_total` beside `total`.
+`focus=strategy:workforce-development` returns only that strategy's sources, with
+`corpus_total` beside `total`.
 
 ### 3. The type vocabulary is read from the corpus, never assumed
 
@@ -100,32 +109,39 @@ the folder is wherever the `index.md` is, at any depth.
 
 A folder with no `index.md` is not a focus. Nothing is invented for it.
 
-### 4. Ordering is partitioned on the key
+### 4. Narrowing happens on the key, except where a read is already paid for
 
-The whole corpus is ordered without opening a file, the same trick `list_domains`
-and the corpus tree use.
+A plain page load narrows on the key, so it costs no extra reads — the same trick
+`list_domains` and the corpus tree use.
 
-**With a stated limit.** This is exact today because all 241 tagged sources sit
-in the folder their tag names, and none carries a second tag. **The day a source
-under `funders/gates-foundation/` is tagged `strategy:workforce-development`,
-key-partitioning will miss it** — the tag lives inside the file, and finding it
-across the corpus means 845 reads, which is the 20.6-second cold start that made
-the window look hung.
+**A search narrows on the row instead, and is strictly more correct.** A search
+opens every file anyway, so it can see a `domains:` tag on a source living
+*outside* the focus's folder. That path honours the tag; the key-only path
+cannot.
 
-The fix is an index, not brute force: a small manifest written on capture and on
-re-tag, the same instinct as the `bin/` pointer. It is **not built**, and this
-paragraph exists so nobody discovers the limit from a wrong answer. What *is*
-already correct: any row the listing actually reads is matched on its real
-`domains:` value, so search and the rendered order honour the tag even where
-partitioning could not see it.
+The remaining gap is therefore exactly one case: **a plain page load, no search,
+and a source tagged into a focus it does not live under.** It does not exist in
+reach-edu today — all 241 tagged sources sit in the folder their tag names, none
+carries a second tag — and the fix when it does is an index, not 845 reads: a
+small manifest written on capture and on re-tag, the same instinct as the `bin/`
+pointer. **Not built.** This paragraph exists so nobody discovers the limit from
+a wrong answer, and `FOCUS-07` asserts both halves — the miss on a page load, the
+hit under search — so the day it changes, a test says so.
 
-### 5. Multiple focuses are the eventual shape, one is the current one
+### 5. Chips are grouped by their declared type
+
+A row of unlabelled chips is legible only to someone who already knows the
+corpus — the operator's own reaction was *"oh, the tags are strategies."* Each
+group carries its declared type as a heading (`STRATEGY`, `TOPIC`, and whatever
+a client's corpus declares), read from the data like everything else here.
+
+### 6. Multiple focuses are the eventual shape, one is the current one
 
 `domains:` is a list. One focus at a time is what ships; the API takes a single
 `focus` because inventing multi-focus ranking with zero multi-valued data would
 be designing against imagination.
 
-### 6. A declaration is not a source
+### 7. A declaration is not a source
 
 `index.md`, `AGENTS.md` and `README.md` describe the corpus rather than being
 captured material, and are excluded from the listing. Thirteen such files in
@@ -142,13 +158,13 @@ one of its unprocessed leftovers.
 | ID | Given / When / Then |
 |---|---|
 | `FOCUS-01` | Given a source whose `domains:` names a strategy, when a word from that tag is searched, then the source matches even though its title and excerpt do not contain it |
-| `FOCUS-02` | Given a corpus with sources inside and outside a strategy, when that strategy is focused, then every source is still returned and the focused ones come first |
-| `FOCUS-03` | Given a focus, when the listing is returned, then `focused_total` counts the emphasised sources and `total` still counts them all |
+| `FOCUS-02` | Given a corpus with sources inside and outside a strategy, when that strategy is focused, then only that strategy's sources are returned, newest first |
+| `FOCUS-03` | Given a focus, when the listing is returned, then `total` counts the matches and `corpus_total` still counts the whole corpus |
 | `FOCUS-04` | Given a corpus declaring an unfamiliar type (`thesis`, whose plural no rule would guess) and a nested one, when the focuses are derived, then both resolve from their own `index.md` and a folder without one is not offered |
-| `FOCUS-05` | Given a focus and a page smaller than the focused set, when the first page is requested, then it holds only focused sources — the ordering is not undone by the date sort |
-| `FOCUS-06` | Given no focus, when the listing is returned, then order and `focused_total` are unchanged from before this feature |
-| `FOCUS-07` | Given a source tagged into a strategy whose folder it does not live in, when that strategy is focused and the row is read, then the row still sorts as focused |
-| `FOCUS-08` | Given a nested, unfamiliar type, when it is focused, then it orders exactly like a familiar one, with no code that knows its name |
+| `FOCUS-05` | Given a focus, when a page is requested, then it holds only that focus's sources, newest first, and reports both counts |
+| `FOCUS-06` | Given no focus, when the listing is returned, then order is unchanged and `total` equals `corpus_total` |
+| `FOCUS-07` | Given a source tagged into a strategy whose folder it does not live in, when that strategy is focused, then a plain page load misses it and a search finds it — and the search still excludes untagged matches |
+| `FOCUS-08` | Given a nested, unfamiliar type, when it is focused, then it narrows exactly like a familiar one, with no code that knows its name |
 
 ## Related
 

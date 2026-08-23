@@ -64,10 +64,11 @@ class Listing:
     rows: list[SourceRow] = field(default_factory=list)
     total: int = 0
     domains: list[str] = field(default_factory=list)
-    #: How many of `total` the active focus emphasises. Zero when none is set.
-    #: Reported alongside the total rather than replacing it, because the count
-    #: that matters while drafting is *both*: "34 to start with, 845 available".
-    focused_total: int = 0
+    #: Everything in the corpus, before `focus` or `domain` narrowed it. Reported
+    #: alongside `total` so a narrowed list can always say what it is a subset OF
+    #: — "82 in Workforce Development · 832 in the corpus". A single number would
+    #: make a filter look like the whole world.
+    corpus_total: int = 0
 
 
 def _domain_of(path: str) -> str:
@@ -258,13 +259,17 @@ def list_sources(
     domain: str = "",
     focus: str = "",
 ) -> Listing:
-    """Every source under `prefix` and `domain`, newest first — or focus-ordered.
+    """Every source under `prefix`, `domain` and `focus`, newest first.
 
-    `focus` is emphasis, NOT a filter. The whole corpus is still returned; the
-    focused sources simply come first. That distinction is the point: when you
-    are drafting a strategy document you want everything the client has, with a
-    pointer saying *mainly look here*. A filter that hid the other 591 sources
-    would remove exactly the access the tag exists to preserve.
+    `focus` NARROWS. An earlier version had it merely reorder — everything
+    returned, emphasised first — on the reading that "mainly look here" meant
+    emphasis rather than membership. Driven in a real browser that is
+    indistinguishable from nothing happening: with 200 rows on screen and 82
+    matches, only the top of the list moves and rows 83-200 are unrelated.
+
+    Access to the rest of the corpus is preserved by the toggle being a toggle —
+    one click away — and by `corpus_total` riding alongside `total`, so a
+    narrowed list always says what it is a subset of.
     """
     all_keys = [
         k
@@ -274,34 +279,29 @@ def list_sources(
     if domain:
         all_keys = [k for k in all_keys if _in_domain(k, domain)]
 
-    focused_total = 0
+    corpus_total = len(all_keys)
     defs = list_domain_defs(store, prefix) if focus else []
+    focus_dir = ""
     if focus:
-        folder = focus_folder(focus, defs)
-        # Partitioned on the KEY, so ordering the whole corpus costs no reads.
-        # Today that is exact: all 241 tagged sources sit in the folder their tag
-        # names, and none carries a second tag. The day one does, this ordering
-        # would miss it — the fix is an index, not 845 reads. See
-        # `context-v/specs/Strategy-Focus.md`.
-        hit = [k for k in all_keys if _in_domain(k, folder)]
-        rest = [k for k in all_keys if not _in_domain(k, folder)]
-        focused_total = len(hit)
-        # Newest first WITHIN each partition. Concatenating the raw key order
-        # here served the focused set alphabetically, so the oldest source in the
-        # strategy led the page — focus is about which sources come first, not
-        # about abandoning the order the rest of the app uses.
-        all_keys = _newest_first(hit) + _newest_first(rest)
+        focus_dir = focus_folder(focus, defs)
+        # Narrowed on the KEY, so a plain page load costs no extra reads. Exact
+        # today: all 241 tagged sources sit in the folder their tag names and
+        # none carries a second tag.
+        #
+        # A search is different — it opens every file anyway, so it CAN see a
+        # tag on a source living outside the folder. There the narrowing happens
+        # on rows instead, below, and is strictly more correct. The remaining
+        # gap is a plain page load with no search, and the fix for that is an
+        # index rather than 845 reads. See `context-v/specs/Strategy-Focus.md`.
+        if not search:
+            all_keys = [k for k in all_keys if _in_domain(k, focus_dir)]
     domains = {_domain_of(k) for k in all_keys}
-    total = len(all_keys)
 
     # A search has to look at everything. A page load does not, and pretending
     # otherwise costs 845 network reads to show 50 rows.
+    total = len(all_keys)
     paged = not search
-    if paged and focus:
-        # Focus already imposed the order; re-sorting by filename would undo it.
-        keys = all_keys[offset : offset + limit]
-    else:
-        keys = _page_keys(all_keys, offset, limit) if paged else all_keys
+    keys = _page_keys(all_keys, offset, limit) if paged else all_keys
 
     rows: list[SourceRow] = []
 
@@ -372,24 +372,25 @@ def list_sources(
             or any(needle in d.lower() for d in r.domains)
         ]
 
+    if search and focus:
+        # Every file was opened for the search, so the tag is visible here even
+        # on a source living outside the focus's folder — a strictly better
+        # narrowing than the key-level one, and free at this point.
+        rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
+        total = len(rows)
+
     if paged:
         # Already ordered and windowed by key; re-slicing would drop rows.
-        return Listing(rows=rows, total=total, domains=sorted(domains), focused_total=focused_total)
+        return Listing(rows=rows, total=total, domains=sorted(domains), corpus_total=corpus_total)
 
     # Newest fetch first — the question a corpus browser answers most often is
     # "what did I just add". Damaged rows have no fetched_at and sort last.
-    if focus:
-        folder = focus_folder(focus, defs)
-        # Stable: focused first, then newest. `sort` is stable in Python, so the
-        # fetched_at order above survives inside each partition.
-        rows.sort(key=lambda r: not (_in_domain(r.path, folder) or focus in r.domains))
-    else:
-        rows.sort(key=lambda r: r.fetched_at, reverse=True)
+    rows.sort(key=lambda r: r.fetched_at, reverse=True)
     return Listing(
         rows=rows[offset : offset + limit],
         total=len(rows),
         domains=sorted(domains),
-        focused_total=focused_total,
+        corpus_total=corpus_total,
     )
 
 

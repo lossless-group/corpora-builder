@@ -118,7 +118,7 @@ export const api = {
   // to. Sending `<domain>/` as a raw prefix worked for reach-edu and silently
   // matched nothing in a corpus this tool wrote.
   sources: (domain = '', search = '', focus = '') =>
-    get<{ rows: SourceRow[]; total: number; domains: string[]; focused_total: number }>(
+    get<{ rows: SourceRow[]; total: number; domains: string[]; corpus_total: number }>(
       '/api/sources',
       { domain, search, focus }
     ),

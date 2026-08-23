@@ -129,7 +129,7 @@ def create_app(
             "rows": [r.as_dict() for r in listing.rows],
             "total": listing.total,
             "domains": listing.domains,
-            "focused_total": listing.focused_total,
+            "corpus_total": listing.corpus_total,
         }
 
     @app.get("/api/source", response_class=PlainTextResponse)

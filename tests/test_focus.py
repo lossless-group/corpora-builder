@@ -1,10 +1,16 @@
 """Covers `context-v/specs/Strategy-Focus.md`.
 
-The single property under protection: **focus orders, it never excludes.** Every
-test that touches a listing asserts the total is unchanged, because the whole
-reason the `domains:` tag exists is to keep the rest of the client's corpus
-reachable while you draft against part of it. A focus that quietly filtered would
-pass a naive "the right rows came back" check and destroy the feature.
+**These tests once asserted the opposite.** The first reading of "mainly look
+here" was emphasis — focus reorders, never excludes — and every test here checked
+that the total came back unchanged. Driven in a real browser it was
+indistinguishable from nothing happening: 200 rows on screen, 82 matches, so only
+the top of the list moved and rows 83-200 were unrelated. The operator's report
+was "the tags don't actually toggle the filtered search results," and they were
+right.
+
+Focus narrows. What preserves access to the rest of the corpus is that the toggle
+is a toggle, and that `corpus_total` rides alongside `total` so a narrowed list
+always says what it is a subset of.
 """
 
 from __future__ import annotations
@@ -165,57 +171,51 @@ def test_the_tag_is_searchable_text(store: LocalFsStore) -> None:
 
 
 @pytest.mark.spec("FOCUS-02")
-def test_focusing_reorders_and_returns_everything(store: LocalFsStore) -> None:
-    """The property the whole feature rests on.
-
-    A filter would return 2 rows and look correct to anyone checking that the
-    right sources came back. It would also remove exactly the access the tag
-    exists to preserve — all of the client's corpus, with a pointer.
-    """
+def test_focusing_narrows_the_listing(store: LocalFsStore) -> None:
+    """Only the focus's sources come back, newest first."""
     plain = list_sources(store)
     focused = list_sources(store, focus=FOCUS)
 
-    assert focused.total == plain.total == 7  # nothing hidden
-    assert [r.title for r in focused.rows][:2] == ["Skills Gap Study", "Apprenticeship Report"]
-    assert {r.title for r in focused.rows} == {r.title for r in plain.rows}
+    assert plain.total == 7
+    assert focused.total == 2
+    assert [r.title for r in focused.rows] == ["Skills Gap Study", "Apprenticeship Report"]
 
 
 @pytest.mark.spec("FOCUS-03")
-def test_both_numbers_are_reported(store: LocalFsStore) -> None:
-    """ "34 to start with, 845 available" — never "34 sources"."""
+def test_a_narrowed_list_says_what_it_is_a_subset_of(store: LocalFsStore) -> None:
+    """ "2 in Workforce Development · 7 in the corpus" — never just "2 sources".
+
+    A single number makes a filter look like the whole world. That is the whole
+    job `corpus_total` does, and it is why narrowing here is not the same thing
+    as hiding.
+    """
     focused = list_sources(store, focus=FOCUS)
 
-    assert focused.total == 7
-    # Two, not three. `Cross-Tagged Brief` carries the tag but lives under
-    # `funders/`, and this count is partitioned on the key so that ordering the
-    # whole corpus costs no reads. That gap is the one `Strategy-Focus.md`
-    # names, and it is asserted here rather than glossed: a number that silently
-    # drifts from the truth is worse than one whose limit is written down.
-    assert focused.focused_total == 2
+    assert focused.total == 2
+    assert focused.corpus_total == 7
 
-    assert list_sources(store).focused_total == 0
+    plain = list_sources(store)
+    assert plain.total == plain.corpus_total == 7
 
 
 @pytest.mark.spec("FOCUS-05")
-def test_a_short_page_holds_only_focused_sources(store: LocalFsStore) -> None:
-    """The date sort must not undo the focus ordering.
-
-    Two of the untagged sources are the NEWEST in the fixture precisely so that a
-    focus that forgot to suppress the fetched_at sort would fail here.
-    """
+def test_the_narrowed_page_is_newest_first(store: LocalFsStore) -> None:
+    """Two untagged sources are the NEWEST in the fixture, so a narrowing that
+    leaked would put them first and be caught here rather than looking plausible."""
     page = list_sources(store, focus=FOCUS, limit=2)
 
     assert [r.title for r in page.rows] == ["Skills Gap Study", "Apprenticeship Report"]
-    assert page.total == 7
+    assert page.total == 2
+    assert page.corpus_total == 7
 
 
 @pytest.mark.spec("FOCUS-06")
 def test_without_a_focus_nothing_changes(store: LocalFsStore) -> None:
     """Newest first, as before — the feature is additive."""
-    rows = list_sources(store).rows
+    listing = list_sources(store)
 
-    assert [r.title for r in rows][:2] == ["Portfolio Update", "Grant Announcement"]
-    assert list_sources(store).focused_total == 0
+    assert [r.title for r in listing.rows][:2] == ["Portfolio Update", "Grant Announcement"]
+    assert listing.total == listing.corpus_total == 7
 
 
 @pytest.mark.spec("FOCUS-07")
@@ -229,18 +229,19 @@ def test_a_source_tagged_outside_its_folder_still_sorts_as_focused(
     sort consults the tag as well as the path — and why the spec says plainly
     that discovering such a source across the whole corpus needs an index.
     """
-    hits = list_sources(store, search="Brief", focus=FOCUS)
-    assert [r.title for r in hits.rows] == ["Cross-Tagged Brief"]
-    assert hits.rows[0].domains == [FOCUS]
+    # A plain page load narrows on the key, so the cross-tagged source is NOT
+    # found — the gap the spec names rather than hides.
+    plain = list_sources(store, focus=FOCUS)
+    assert "Cross-Tagged Brief" not in [r.title for r in plain.rows]
 
-    # The load-bearing assertion. Cross-Tagged Brief is the OLDEST source in the
-    # fixture; Grant Announcement and Portfolio Update are the newest. On date
-    # order alone it sorts last, so it can only lead here if the tag decided.
-    everything = list_sources(store, search="e", focus=FOCUS)
-    titles = [r.title for r in everything.rows]
-    assert "Grant Announcement" in titles and "Portfolio Update" in titles
-    assert titles.index("Cross-Tagged Brief") < titles.index("Grant Announcement")
-    assert titles.index("Cross-Tagged Brief") < titles.index("Portfolio Update")
+    # A search opens every file, so there the tag decides and the source IS
+    # found — strictly more correct, and free at that point.
+    searched = list_sources(store, search="e", focus=FOCUS)
+    titles = [r.title for r in searched.rows]
+    assert "Cross-Tagged Brief" in titles
+    # ...and the narrowing still holds: untagged sources matching "e" stay out.
+    assert "Grant Announcement" not in titles
+    assert "Portfolio Update" not in titles
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +303,6 @@ def test_a_nested_or_unfamiliar_type_focuses_like_any_other(tmp_path: Path) -> N
 
     listing = list_sources(s, focus="thesis:ocean-energy")
 
-    assert listing.total == 2  # nothing hidden
-    assert listing.focused_total == 1
-    assert [r.title for r in listing.rows][0] == "Tidal Survey"
+    assert listing.total == 1
+    assert listing.corpus_total == 2
+    assert [r.title for r in listing.rows] == ["Tidal Survey"]
