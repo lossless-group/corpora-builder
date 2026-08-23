@@ -35,7 +35,24 @@ from src.binary.store import (
     PRESENT,
     BinStore,
 )
+from src.model import SourceFile
 from src.store.local import LocalFsStore
+
+
+def migrate_tree_with(store: BinStore, root: Path, compress) -> list:  # type: ignore[no-untyped-def]
+    """`migrate_tree` with an injected compressor, so idempotence can be proven
+    by counting invocations rather than by trusting a timing side effect."""
+    import src.binary.ingest as mod
+
+    real = mod.optimize_pdf
+    mod.optimize_pdf = lambda data, **kw: real(  # type: ignore[assignment]
+        data, compress=compress, extract_text=kw.get("extract_text", lambda b: PROSE)
+    )
+    try:
+        return mod.migrate_tree(store, root, optimize=True)
+    finally:
+        mod.optimize_pdf = real  # type: ignore[assignment]
+
 
 # ---------------------------------------------------------------------------
 # helpers — fake PDFs and fake optimizers, so every branch is reachable
@@ -339,36 +356,124 @@ def test_eviction_is_refused_when_the_remote_cannot_be_confirmed(
 
 
 @pytest.mark.spec("BIN-16")
-def test_migration_hashes_every_binary_and_deletes_no_original(
+def test_migration_writes_the_pointer_onto_each_wrapper_and_deletes_nothing(
     binstore: BinStore, tmp_path: Path
 ) -> None:
+    """The promise is *object AND wrapper*. The first version of this test
+    checked only the object, which is how 24 orphans reached a client bucket."""
     corpus = tmp_path / "corpus"
-    (corpus / "funders").mkdir(parents=True)
-    a = corpus / "funders" / "report.pdf"
-    b = corpus / "funders" / "deck.pdf"
-    a.write_bytes(fake_pdf(body="alpha " * 60))
-    b.write_bytes(fake_pdf(body="beta " * 60))
-    (corpus / "funders" / "report.md").write_text("# wrapper")
+    corpus.mkdir()
+    pdf = corpus / "report.pdf"
+    pdf.write_bytes(fake_pdf(body="alpha " * 60))
+    wrapper = corpus / "report.md"
+    wrapper.write_text("---\nurl: https://example.org/report.pdf\n---\n")
 
     results = migrate_tree(binstore, corpus, optimize=False)
 
-    assert len(results) == 2
-    assert all(binstore.remote.exists(r.ref.key) for r in results)
-    assert a.is_file() and b.is_file()  # nothing deleted — Behaviour 11
+    assert len(results) == 1
+    ref = results[0].ref
+    assert binstore.remote.exists(ref.key)
+
+    written = SourceFile.parse(wrapper.read_text()).binary_asset
+    assert written is not None
+    assert written.binary_key == ref.key
+    assert written.sha256 == ref.sha256 and written.bytes == ref.size
+    assert written.source_sha256 == ref.source_sha256
+    assert written.source_bytes == ref.source_size
+    assert pdf.is_file()  # nothing deleted — Behaviour 11
 
 
 @pytest.mark.spec("BIN-17")
-def test_migration_is_idempotent(binstore: BinStore, tmp_path: Path) -> None:
+def test_migration_is_idempotent_on_the_optimized_path(binstore: BinStore, tmp_path: Path) -> None:
+    """The first version ran with optimize=False, the one path where idempotence
+    was already free. This one proves it where it was actually false."""
     corpus = tmp_path / "corpus"
     corpus.mkdir()
-    (corpus / "a.pdf").write_bytes(fake_pdf())
+    (corpus / "a.pdf").write_bytes(fake_pdf(padding=40_000))
+    (corpus / "a.md").write_text("---\nurl: https://example.org/a.pdf\n---\n")
+    smaller = fake_pdf(padding=1_000)
 
-    first = migrate_tree(binstore, corpus, optimize=False)
-    binstore.remote.reads = 0  # type: ignore[attr-defined]
-    second = migrate_tree(binstore, corpus, optimize=False)
+    calls = {"n": 0}
 
-    assert [r.ref.key for r in first] == [r.ref.key for r in second]
-    assert binstore.remote.list("bin/") == [first[0].ref.key]
+    def counting_compress(_: bytes) -> bytes:
+        calls["n"] += 1
+        return smaller
+
+    def run() -> list:
+        return migrate_tree_with(binstore, corpus, counting_compress)
+
+    first = run()
+    after_first = calls["n"]
+    second = run()
+
+    assert len(first) == 1 and len(second) == 0  # nothing left to do
+    assert calls["n"] == after_first  # the optimizer was NOT invoked again
+    assert len(binstore.remote.list("bin/")) == 1
+
+
+@pytest.mark.spec("BIN-22")
+def test_the_configured_compressor_is_deterministic() -> None:
+    """Ghostscript embeds a timestamp, an /ID and XMP unless told not to, which
+    makes an optimized object's identity unreproducible. Skipped when gs is
+    absent — the flags are what is under test, not our fakes."""
+    gs = pytest.importorskip("shutil").which("gs")
+    if not gs:
+        pytest.skip("ghostscript not installed")
+    from src.binary.optimize import gs_compress
+
+    src = fake_pdf(body="deterministic " * 200)
+    try:
+        a, b = gs_compress(src), gs_compress(src)
+    except Exception:
+        pytest.skip("gs would not process the synthetic fixture")
+    assert sha256_of(a) == sha256_of(b)
+
+
+@pytest.mark.spec("BIN-23")
+def test_an_already_mapped_binary_is_skipped_and_never_recompressed(
+    binstore: BinStore, tmp_path: Path
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "a.pdf").write_bytes(fake_pdf(padding=40_000))
+    (corpus / "a.md").write_text("---\nurl: https://example.org/a.pdf\n---\n")
+
+    calls = {"n": 0}
+
+    def counting_compress(_: bytes) -> bytes:
+        calls["n"] += 1
+        return fake_pdf(padding=1_000)
+
+    migrate_tree_with(binstore, corpus, counting_compress)
+    before = calls["n"]
+
+    again = migrate_tree_with(binstore, corpus, counting_compress)
+
+    assert again == []
+    assert calls["n"] == before
+
+
+@pytest.mark.spec("BIN-24")
+def test_a_changed_source_is_re_ingested_and_the_pointer_updated(
+    binstore: BinStore, tmp_path: Path
+) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    pdf = corpus / "a.pdf"
+    wrapper = corpus / "a.md"
+    pdf.write_bytes(fake_pdf(body="first edition " * 60))
+    wrapper.write_text("---\nurl: https://example.org/a.pdf\n---\n")
+
+    migrate_tree(binstore, corpus, optimize=False)
+    first_key = SourceFile.parse(wrapper.read_text()).binary_asset.binary_key
+
+    pdf.write_bytes(fake_pdf(body="second edition " * 60))  # publisher reissued
+    results = migrate_tree(binstore, corpus, optimize=False)
+
+    assert len(results) == 1
+    second_key = SourceFile.parse(wrapper.read_text()).binary_asset.binary_key
+    assert second_key != first_key
+    assert binstore.remote.exists(second_key)
 
 
 # ---------------------------------------------------------------------------

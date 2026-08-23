@@ -9,7 +9,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.3
+semantic_version: 0.0.2.0
 status: Draft
 spec_reference: "[[../../../context-v/plans/Sync-Corpora-to-R2-and-Show-Clients-What-Changed]]"
 tags:
@@ -89,6 +89,14 @@ existing binaries.
    on the real corpus, still sharp full-screen. `/screen` is 72 DPI and too soft
    for desktop reading.
 
+   **Optimization must be deterministic.** Ghostscript embeds a creation
+   timestamp, a document `/ID`, and XMP metadata, so two runs over the same input
+   produce different bytes and therefore different keys. Three flags remove all
+   three sources — `-dOmitInfoDate=true -dOmitID=true -dOmitXMP=true` — and were
+   measured to give byte-identical output across runs. Without them a migration
+   cannot be re-derived, which is how 24 orphan objects were created on
+   2026-08-22 ([[../issues/Orphaned-Bin-Objects-From-A-Half-Migration]]).
+
 3. **The text layer is an invariant, not a hope.** Extract text before and after.
    If the post-optimization text length falls below **98%** of the original, the
    optimization is **rejected** and the original bytes are stored. A corpus
@@ -143,6 +151,19 @@ existing binaries.
     Removing them is a separate, explicitly-confirmed step, per the RED-list rule
     on deleting corpus content.
 
+12. **Storing an object and writing its pointer are one operation.** A binary in
+    `bin/` that no wrapper references is garbage, not progress — and because
+    optimization is lossy in *identity* as well as bytes, an unreferenced
+    optimized object cannot be traced back to its source. Migration writes the
+    wrapper in the same pass, or it has not migrated anything.
+
+13. **Migration is idempotent by memory, not only by re-derivation.** A file
+    whose sibling wrapper already carries a `binary_key` with a matching
+    `source_sha256` is **skipped** — not re-read, not re-optimized, not
+    re-uploaded. Determinism (Behaviour 2) makes re-derivation *safe*; this rule
+    makes it *unnecessary*, which is what keeps a second run cheap and a
+    thousand-file corpus tractable.
+
 ## Tests
 
 | ID | Given / When / Then |
@@ -162,12 +183,15 @@ existing binaries.
 | `BIN-13` | Given a `not_downloaded` binary, when it is fetched, then it becomes present locally and its sha256 matches `binary_sha256` |
 | `BIN-14` | Given a local binary whose hash is confirmed present remotely, when it is evicted, then the local copy is gone, the wrapper is unchanged, and a later fetch restores identical bytes |
 | `BIN-15` | Given a local binary that cannot be confirmed remotely, when eviction is attempted, then it is refused with a stated reason and the local copy survives |
-| `BIN-16` | Given a corpus of existing binary siblings, when migration runs, then every binary has a `bin/` object and an updated wrapper, and **no original file is deleted** |
-| `BIN-17` | Given migration has already run, when it runs again, then no object is rewritten and no wrapper changes — it is idempotent |
+| `BIN-16` | Given a corpus of existing binary siblings, when migration runs, then every binary has a `bin/` object **and its sibling wrapper carries the matching `binary_key`, both digests and both sizes**, and **no original file is deleted** |
+| `BIN-17` | Given migration has already run **with optimization enabled**, when it runs again, then no object is written, no wrapper changes, and **the optimizer is not invoked** — idempotence holds on the optimized path, not only the verbatim one |
 | `BIN-18` | Given the conformance checks above, when they run against `LocalFsStore` and an in-memory store in turn, then all pass against both with no implementation-specific branching in the test bodies |
 | `BIN-19` | Given the same binary referenced by wrappers in two different corpora, when it is fetched for the second corpus, then the local cache serves it and no remote read occurs |
 | `BIN-20` | Given a cached binary, when the cache is cleared, then no wrapper changes, the remote object is untouched, and a later fetch restores identical bytes |
 | `BIN-21` | Given Ghostscript is not installed, when a PDF is ingested, then the original bytes are stored, `optimized` is `false`, and the capture succeeds rather than failing |
+| `BIN-22` | Given the same PDF optimized twice by the configured compressor, when both outputs are hashed, then the digests are identical — optimization is deterministic |
+| `BIN-23` | Given a binary whose wrapper already records a `binary_key` for its current `source_sha256`, when migration runs, then that file is skipped and the compressor is never called for it |
+| `BIN-24` | Given a binary whose wrapper records a `binary_key` for a **different** `source_sha256`, when migration runs, then it is re-ingested and the wrapper is updated to the new key |
 
 **Not in the automated suite, run deliberately:**
 

@@ -7,8 +7,12 @@ Bloomberg annual report is 38 MB and comes out of Ghostscript `/ebook` at
 **9.1 MB with its text layer byte-for-byte intact** — 24% of original. Across
 78 binaries that is the difference between 282 MB and roughly 70.
 
-Four rules, and three of them are refusals:
+Five rules, and three of them are refusals:
 
+0. **Deterministic, or the key is unreproducible.** `gs_compress` passes
+   `-dOmitInfoDate -dOmitID -dOmitXMP`. Without them the same PDF yields a
+   different hash every run, and an object whose pointer was never written can
+   never be traced back to its source.
 1. **`/ebook` (150 DPI), not `/screen`.** `/screen` is 72 DPI and gets to 11%,
    but it is visibly soft full-screen, which is where a client reads a report.
 2. **Text below threshold means reject.** Ghostscript only downsamples raster
@@ -77,6 +81,15 @@ def gs_compress(data: bytes, settings: str = DEFAULT_PDF_SETTINGS) -> bytes:
             "-sDEVICE=pdfwrite",
             "-dCompatibilityLevel=1.5",
             f"-dPDFSETTINGS={settings}",
+            # Determinism. Ghostscript otherwise embeds a creation timestamp, a
+            # document /ID, and XMP metadata, so two runs over one input produce
+            # different bytes and therefore different content keys. That is how
+            # 24 orphan objects were created on 2026-08-22 — see
+            # `context-v/issues/Orphaned-Bin-Objects-From-A-Half-Migration.md`.
+            # Measured byte-identical across runs with these three.
+            "-dOmitInfoDate=true",
+            "-dOmitID=true",
+            "-dOmitXMP=true",
             "-dNOPAUSE",
             "-dQUIET",
             "-dBATCH",
