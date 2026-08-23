@@ -36,6 +36,12 @@
 
   async function loadTree() {
     if (tree) return;
+    // Clear the previous failure BEFORE retrying: the template checks
+    // `treeError` first, so a retry that succeeded would have gone on showing
+    // the old error forever. The failure this fixes is the ordinary one — a
+    // sidecar older than the frontend, which is every `tauri dev` session where
+    // a Python endpoint was added since the process started.
+    treeError = '';
     try {
       const data = await api.tree();
       tree = data.tree;
@@ -230,6 +236,11 @@
     {#if tab === 'files'}
       {#if treeError}
         <p class="note err">Could not read the corpus: {treeError}</p>
+        <p class="note">
+          A <code>404</code> here usually means the backend is older than this
+          window — it does not restart when Python changes.
+          <button onclick={loadTree}>Retry</button>
+        </p>
       {:else if !tree}
         <p class="note">Reading the corpus…</p>
       {:else}
