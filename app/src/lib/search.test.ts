@@ -63,6 +63,14 @@ const ENTRIES = [
     title: 'Cross-Tagged Brief',
     excerpt: 'A short brief on credential stacking and employer partnerships. Filed in the corpus.',
     domains: ['strategy:adult-literacy-numeracy']
+  },
+  {
+    // The three-segment chain. Deliberately shares no query word with the tests
+    // above, so it exercises the cascade without disturbing their ranking.
+    key: 'live/domains/strategies/workforce-development/sources/2026-01-06_z.md',
+    title: 'Regional Board Minutes',
+    excerpt: 'Minutes of the regional board covering budget and staffing. Filed in the corpus.',
+    domains: ['domain:strategy:workforce-development']
   }
 ];
 
@@ -272,4 +280,56 @@ test('SEARCH-12 an excerpt is reduced to text and mark, nothing else', () => {
   assert.equal(safeExcerpt('<img src=x onerror=alert(1)>hi'), 'hi');
   assert.equal(safeExcerpt('<mark onload=alert(1)>b</mark>'), 'b</mark>');
   assert.equal(safeExcerpt('<script>alert(1)</script>ok'), 'alert(1)ok');
+});
+
+// ---------------------------------------------------------------------------
+// a reference cascades
+// ---------------------------------------------------------------------------
+
+test('SEARCH-13 a shorter chain filters to everything beneath it', async () => {
+  // Pagefind filters are exact-match, so the builder writes down every chain a
+  // reference answers to. One entry carries the three-segment
+  // `domain:strategy:workforce-development`; two carry the two-segment
+  // `strategy:workforce-development`. Focusing `domain` must reach the first
+  // and none of the others.
+  const deep = ENTRIES[5].key; // the three-segment chain
+  const mid = ENTRIES[0].key; // the two-segment one
+
+  assert.deepEqual(await ranked.keys('', 'domain'), [deep]);
+  assert.deepEqual(await ranked.keys('', 'domain:strategy'), [deep]);
+  assert.deepEqual(await ranked.keys('', 'domain:strategy:workforce-development'), [deep]);
+
+  // The two-segment references answer to their own chain only — a longer chain
+  // is NOT reached by a focus that is not a prefix of it.
+  const twoSegment = await ranked.keys('', 'strategy:workforce-development');
+  assert.equal(twoSegment.length, 2);
+  assert.ok(twoSegment.includes(mid));
+  assert.ok(!twoSegment.includes(deep));
+
+  // And every level is counted, so a rollup is free.
+  const counts = await ranked.focusCounts('');
+  assert.equal(counts['domain'], 1);
+  assert.equal(counts['domain:strategy'], 1);
+  assert.equal(counts['strategy:workforce-development'], 2);
+  // `strategy` rolls up BOTH strategies — the two workforce-development sources
+  // and the two adult-literacy ones — which is the whole point of a rollup and
+  // is not reachable by an exact-match filter without the expansion.
+  assert.equal(counts['strategy'], 4);
+  assert.equal(counts['strategy:adult-literacy-numeracy'], 2);
+});
+
+test('SEARCH-13 the expansion matches the Python rule case for case', () => {
+  // Mirrors `src/model/domains.py::cascade_prefixes`, asserted against the same
+  // table as `FOCUS-10` so the two implementations cannot drift apart quietly.
+  const prefixes = (r: string) => {
+    const parts = r.split(':').filter(Boolean);
+    return parts.map((_, i) => parts.slice(0, i + 1).join(':'));
+  };
+  assert.deepEqual(prefixes('domain:strategy:workforce-development'), [
+    'domain',
+    'domain:strategy',
+    'domain:strategy:workforce-development'
+  ]);
+  assert.deepEqual(prefixes('strategy'), ['strategy']);
+  assert.deepEqual(prefixes(''), []);
 });

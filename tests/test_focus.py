@@ -331,3 +331,124 @@ def test_a_nested_or_unfamiliar_type_focuses_like_any_other(tmp_path: Path) -> N
     assert listing.total == 1
     assert listing.corpus_total == 2
     assert [r.title for r in listing.rows] == ["Tidal Survey"]
+
+
+# ---------------------------------------------------------------------------
+# a reference cascades; a tag does not
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.spec("FOCUS-09")
+def test_a_shorter_chain_reaches_everything_beneath_it(tmp_path: Path) -> None:
+    """The cascade is invoked, not stored.
+
+    A reference named alone is independent; naming a SHORTER chain is a different
+    act, and it is what reaches everything under it. The corpus path has always
+    behaved this way — `_in_domain` matches `funders/` against
+    `funders/ascendium-education` — and this gives the reference the same.
+    """
+    s = LocalFsStore(tmp_path / "corpus")
+    s.write(
+        "live/strategies/workforce-development/index.md",
+        b'---\ntype: "strategy"\nslug: "workforce-development"\ntitle: "WD"\n---\n\nThe case.\n',
+    )
+
+    def put(name: str, when: str, *doms: str) -> None:
+        s.write(
+            f"live/funders/gates/{when}_{name}.md",
+            WRAPPER.format(
+                title=name, slug=name, fetched=f"{when}T00:00:00Z", domains=_domains(*doms)
+            ).encode(),
+        )
+
+    put("deep", "2026-01-01", "domain:strategy:workforce-development")
+    put("mid", "2026-01-02", "strategy:workforce-development")
+    put("bare", "2026-01-03", "strategy")
+    put("other", "2026-01-04", "topic:future-of-work")
+
+    def titles(focus: str) -> set[str]:
+        return {r.title for r in list_sources(s, search="e", focus=focus).rows}
+
+    # A shorter chain reaches down.
+    assert titles("domain") == {"deep"}
+    assert titles("domain:strategy") == {"deep"}
+    assert titles("strategy") == {"mid", "bare"}
+
+    # The full chain matches only itself.
+    assert titles("strategy:workforce-development") == {"mid"}
+    assert titles("domain:strategy:workforce-development") == {"deep"}
+
+    # And an unrelated branch is never reached.
+    assert "other" not in titles("strategy")
+
+
+@pytest.mark.spec("FOCUS-10")
+def test_the_match_is_on_the_separator_never_the_string(tmp_path: Path) -> None:
+    """`strategy` must not match `strategy-two:…`.
+
+    A bare `startswith` says it does. This is the same trap `_in_domain` avoids
+    by testing `domain + "/"` rather than `domain`, and it is the one edge a
+    cascade has.
+    """
+    from src.model.domains import cascade_prefixes, matches
+
+    assert matches("strategy:workforce-development", "strategy")
+    assert not matches("strategy-two:workforce-development", "strategy")
+    assert not matches("strategyx", "strategy")
+    assert matches("strategy", "strategy")
+    # An empty focus is "no narrowing", not "match nothing".
+    assert matches("anything:at:all", "")
+
+    assert cascade_prefixes("domain:strategy:workforce-development") == [
+        "domain",
+        "domain:strategy",
+        "domain:strategy:workforce-development",
+    ]
+    assert cascade_prefixes("strategy") == ["strategy"]
+    assert cascade_prefixes("") == []
+
+
+@pytest.mark.spec("FOCUS-11")
+def test_a_tag_is_never_a_scope(tmp_path: Path) -> None:
+    """Two fields, two conventions, and only one of them is a scope.
+
+    `tags:` carries Train-Case labels — `Workforce-Development` — and `domains:`
+    carries `kind:slug` references. Measured across reach-edu: no domain value is
+    Train-Case and no tag contains a colon. Treating a tag as a scope is how an
+    agent gets pointed at a keyword instead of a corpus.
+    """
+    s = LocalFsStore(tmp_path / "corpus")
+    s.write(
+        "live/strategies/workforce-development/index.md",
+        b'---\ntype: "strategy"\nslug: "workforce-development"\ntitle: "WD"\n---\n\nThe case.\n',
+    )
+    s.write(
+        "live/funders/gates/2026-01-01_labelled.md",
+        (
+            b"---\n"
+            b'title: "Labelled Only"\n'
+            b'url: "https://example.org/labelled"\n'
+            b'fetched_at: "2026-01-01T00:00:00Z"\n'
+            b"tags:\n"
+            b'  - "Workforce-Development"\n'
+            b"---\n\nSome body text about grants and workforce programs everywhere.\n"
+        ),
+    )
+    s.write(
+        "live/funders/gates/2026-01-02_scoped.md",
+        WRAPPER.format(
+            title="Scoped",
+            slug="scoped",
+            fetched="2026-01-02T00:00:00Z",
+            domains=_domains("strategy:workforce-development"),
+        ).encode(),
+    )
+
+    focused = list_sources(s, search="e", focus="strategy:workforce-development")
+    found = {r.title for r in focused.rows}
+
+    assert found == {"Scoped"}, "the Train-Case tag must not be read as a reference"
+
+    # ...and the tag is still carried on the row, just not as a scope.
+    everything = {r.title: r for r in list_sources(s).rows}
+    assert everything["Labelled Only"].domains == []

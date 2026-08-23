@@ -22,7 +22,7 @@ import json
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.index.manifest import INDEX_PREFIX, fingerprint
@@ -66,6 +66,11 @@ class BuildResult:
     #: right — which is what keeps a rebuild from costing 1,700 operations
     #: against a client's bucket.
     written: int = 0
+    #: Exactly which keys were sent. Carried because the count alone cannot
+    #: answer the question that matters — *did the bulk move?* Pagefind's
+    #: index chunks are not byte-identical across runs, so a rebuild resends
+    #: one or two of them at random; the 845 fragments must never move.
+    written_keys: list[str] = field(default_factory=list)
 
 
 def _content_type(name: str) -> str:
@@ -159,6 +164,7 @@ def build_search_index(store: CorpusStore, manifest_blob: bytes) -> BuildResult:
         files = list(sorted(f for f in out.rglob("*") if f.is_file()))
         existing = set(store.list(BUNDLE_PREFIX))
         produced: set[str] = set()
+        sent: list[str] = []
         written = 0
 
         for f in files:
@@ -176,6 +182,7 @@ def build_search_index(store: CorpusStore, manifest_blob: bytes) -> BuildResult:
                 continue
             store.write(key, f.read_bytes())
             written += 1
+            sent.append(key)
 
         # Orphans still have to go. A rebuild after a deletion produces fewer
         # chunks, and anything left behind is a chunk the runtime would happily
@@ -184,4 +191,6 @@ def build_search_index(store: CorpusStore, manifest_blob: bytes) -> BuildResult:
             store.delete(key)
 
     store.write(BUNDLE_FINGERPRINT_KEY, fingerprint(manifest_blob).encode("utf-8"))
-    return BuildResult(ok=True, records=records, files=len(files), written=written)
+    return BuildResult(
+        ok=True, records=records, files=len(files), written=written, written_keys=sent
+    )

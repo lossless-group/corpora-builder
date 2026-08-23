@@ -112,12 +112,22 @@ def test_a_rebuild_resends_only_what_is_not_content_addressed(store: LocalFsStor
     second = reindex(store)
 
     assert second.search.files == first.search.files
-    assert second.search.written < second.search.files
     resent = second.search.written
     assert resent <= 20, f"an unchanged rebuild resent {resent} files"
-    # ...and what WAS resent is exactly the un-addressed set at the bundle root.
-    roots = [k for k in store.list(BUNDLE_PREFIX) if "/" not in k[len(BUNDLE_PREFIX) :]]
-    assert resent == len(roots)
+
+    # **The bulk is what must not move.** Pagefind writes one fragment per
+    # record — 845 of them on reach-edu — and that is where the 1,700 operations
+    # came from. Asserted on the KEYS rather than the count, because the count
+    # cannot distinguish "resent a stylesheet" from "resent the corpus".
+    fragments = [k for k in second.search.written_keys if "/fragment/" in k]
+    assert not fragments, f"an unchanged rebuild resent {len(fragments)} fragment(s)"
+
+    # An earlier version asserted `resent == len(bundle-root files)`, which
+    # flaked one run in three at 14 vs 13: **Pagefind's output is not
+    # byte-identical across runs**, so an index chunk occasionally re-hashes and
+    # is legitimately resent under a new name. That is fine — index chunks are a
+    # handful — and the assertion above is the promise the equality was standing
+    # in for.
 
 
 @pytest.mark.spec("SEARCH-08")

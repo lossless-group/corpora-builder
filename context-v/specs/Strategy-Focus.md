@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.3.0
+at_semantic_version: 0.0.4.0
 status: Draft
 site_uuid: 2e7b4c96-8a01-4d3f-b25e-6c9f0a17d834
 hex_code: t8pv2c
@@ -180,7 +180,58 @@ any of the six; what a second simultaneous focus would mean — union or
 intersection — has never been asked for by anyone drafting against this corpus.
 That is a question to put to an operator, not one to answer by guessing.
 
-### 7. A declaration is not a source
+### 7. A domain reference is not a tag
+
+**This spec called them tags until 2026-08-23, and they are not.** A source
+carries both fields and they answer different questions:
+
+| | `domains:` | `tags:` |
+|---|---|---|
+| example | `strategy:workforce-development` | `Workforce-Development` |
+| shape | `kind:slug`, colon-separated, lowercase | **Train-Case**, minor words lowercase (`AI-at-Work`) |
+| vocabulary | declared by an `index.md` in the corpus | free |
+| structure | **cascades** — Behaviour 8 | flat |
+| what it is | a **scope**: which corpus this belongs to | a **label**: what it is about |
+
+Measured across reach-edu, 2026-08-23:
+
+| | |
+|---|---|
+| carry `domains:` | 241 · 8 distinct values · **every one exactly two segments** |
+| carry `tags:` | 191 · 88 distinct values · **100% Train-Case**, zero exceptions |
+| overlap in shape | **none** — no domain value is Train-Case, no tag contains a colon |
+
+`Workforce-Development` exists as a tag *and* `strategy:workforce-development` as
+a domain reference. Same idea, two fields — and only one of them is a scope an
+agent can be pointed at. Calling a domain reference a tag is how a scope quietly
+becomes a keyword.
+
+### 8. A domain reference cascades; a tag does not
+
+Per [[../../../context-v/specs/Flexible-Entity-Relationships-to-Mirror-Messy-IRL-Collaboration]]
+— *the cascade is invoked, not stored*. A reference names a chain, and naming a
+**shorter** chain reaches everything beneath it:
+
+```
+focus                              matches
+strategy                        →  strategy:workforce-development
+domain:strategy                 →  domain:strategy:workforce-development
+strategy:workforce-development  →  itself only
+```
+
+The path already behaves this way — `_in_domain` is
+`d == domain or d.startswith(domain + "/")`, which is why `funders/` is a legal
+filter and the combobox's Backspace walks up it. This gives the reference the
+same cascade the path has.
+
+**Segment-aware, or it is wrong.** `strategy` must not match
+`strategy-two:something`. The test is on the separator, not the string — exactly
+the trap `_in_domain` already avoids with `/`.
+
+A `tags:` value never cascades. It has no separator to cascade on, and it is a
+label rather than a scope.
+
+### 9. A declaration is not a source
 
 `index.md`, `AGENTS.md` and `README.md` describe the corpus rather than being
 captured material, and are excluded from the listing. Thirteen such files in
@@ -204,6 +255,9 @@ one of its unprocessed leftovers.
 | `FOCUS-06` | Given no focus, when the listing is returned, then order is unchanged and `total` equals `corpus_total` |
 | `FOCUS-07` | Given a source tagged into a strategy whose folder it does not live in, when that strategy is focused, then a manifest-backed page load finds it and an unindexed page load does not — and neither admits untagged matches |
 | `FOCUS-08` | Given a nested, unfamiliar type, when it is focused, then it narrows exactly like a familiar one, with no code that knows its name |
+| `FOCUS-09` | Given a source whose `domains:` reference is a longer chain than the focus, when that shorter chain is focused, then the source is included — and focusing the full chain still matches only itself |
+| `FOCUS-10` | Given two references sharing a leading string but not a leading segment, when the shorter is focused, then the sibling is excluded — the match is on the separator, never on the string |
+| `FOCUS-11` | Given a source carrying both a Train-Case `tags:` value and a `domains:` reference, when a focus is applied, then only the reference decides, and no tag is ever treated as a scope |
 
 ## Related
 

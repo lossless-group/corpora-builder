@@ -26,6 +26,7 @@ from src.index.manifest import (
     load_manifest,
 )
 from src.model import SourceFile
+from src.model.domains import any_match
 from src.store import CorpusStore
 
 
@@ -51,7 +52,9 @@ class SourceRow:
     binary_bytes: int = 0
     binary_optimized: bool = False
     #: The `domains:` frontmatter list — `strategy:workforce-development` and
-    #: friends. NOT the same thing as `domain` above: `domain` is the folder the
+    #: friends. **Domain REFERENCES, not tags**: `tags:` is a separate field
+    #: carrying Train-Case labels (`Workforce-Development`) and does not cascade.
+    #: NOT the same thing as `domain` above either: `domain` is the folder the
     #: bytes sit in, this is the emphasis the operator put on them. A source's
     #: folder says where it lives; this says which piece of work says "mainly
     #: look here" when you are drafting.
@@ -221,12 +224,24 @@ def list_domain_defs(store: CorpusStore, prefix: str = "") -> list[DomainDef]:
     return sorted(defs, key=lambda d: (d.type, d.title.lower() or d.slug))
 
 
-def focus_folder(focus: str, defs: list[DomainDef]) -> str:
-    """The folder a `type:slug` names, per the corpus's own declarations."""
-    for d in defs:
-        if d.value == focus:
-            return d.folder
-    return ""
+def focus_folders(focus: str, defs: list[DomainDef]) -> list[str]:
+    """Every folder that falls under `focus`, per the corpus's own declarations.
+
+    A LIST, because a domain reference cascades: focusing `strategy` names every
+    declared strategy, not one. An exact lookup returned `""` for any chain that
+    was not itself a declaration — and `_in_domain(key, "")` means *no
+    narrowing*, so a focus nobody had declared silently matched the whole corpus.
+    Found by `FOCUS-09`.
+
+    Empty means no declared folder falls under this focus. That is a real answer:
+    the reference on a row may still match, and if neither does, nothing does.
+    """
+    return [d.folder for d in defs if any_match([d.value], focus)]
+
+
+def in_any_folder(key: str, folders: list[str]) -> bool:
+    """Whether `key` sits under any of `folders`. Empty list is never a match."""
+    return any(_in_domain(key, f) for f in folders)
 
 
 def _in_domain(key: str, domain: str) -> bool:
@@ -444,7 +459,7 @@ def list_sources(
     domains = sorted({_domain_of(k) for k in all_keys})
 
     defs = list_domain_defs(store, prefix) if focus else []
-    focus_dir = focus_folder(focus, defs) if focus else ""
+    focus_dirs = focus_folders(focus, defs) if focus else []
 
     manifest = load_manifest(store) if _is_indexed(store, raw_keys, prefix) else None
 
@@ -461,10 +476,16 @@ def list_sources(
                 entry = _entry_for(key, blobs.get(key, KeyError(key)))
             rows.append(row_from_entry(entry, bin_store))
         if focus:
-            # Narrowed on the ROW, so a source tagged into a focus whose folder
+            # Narrowed on the ROW, so a source referencing a focus whose folder
             # it does not live under is found. That case used to be reachable
             # only under search; see Strategy-Focus §4 and `FOCUS-07`.
-            rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
+            #
+            # `any_match` rather than `in`: a domain reference CASCADES, so
+            # focusing `strategy` reaches `strategy:workforce-development` — on
+            # the separator, never on the string.
+            rows = [
+                r for r in rows if in_any_folder(r.path, focus_dirs) or any_match(r.domains, focus)
+            ]
         if search:
             rows = _matching(rows, search)
         return Listing(
@@ -480,7 +501,7 @@ def list_sources(
         # Narrowed on the KEY, because the alternative is opening every file to
         # check a tag. Exact for reach-edu today: all 241 tagged sources sit in
         # the folder their tag names and none carries a second tag.
-        all_keys = [k for k in all_keys if _in_domain(k, focus_dir)]
+        all_keys = [k for k in all_keys if in_any_folder(k, focus_dirs)]
         domains = sorted({_domain_of(k) for k in all_keys})
 
     # A search has to look at everything. A page load does not, and pretending
@@ -495,10 +516,12 @@ def list_sources(
     if search:
         rows = _matching(rows, search)
         if focus:
-            # Every file was opened for the search, so the tag is visible here
-            # even on a source living outside the focus's folder — strictly
+            # Every file was opened for the search, so the reference is visible
+            # here even on a source living outside the focus's folder — strictly
             # better than the key-level narrowing, and free at this point.
-            rows = [r for r in rows if _in_domain(r.path, focus_dir) or focus in r.domains]
+            rows = [
+                r for r in rows if in_any_folder(r.path, focus_dirs) or any_match(r.domains, focus)
+            ]
         total = len(rows)
 
     if paged:
