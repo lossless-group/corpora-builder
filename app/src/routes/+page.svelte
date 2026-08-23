@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { mode } from '$lib/mode.svelte';
   import { onMount } from 'svelte';
   import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
 
@@ -121,6 +122,7 @@
 <header>
   <div class="bar">
     <h1>corpora <span>{meta?.label ?? ''}</span></h1>
+    <button class="mode" onclick={() => mode.cycle()} title="Cycle light / dark / vibrant">{mode.current}</button>
     <input bind:value={search} oninput={debounced} type="search" placeholder="Search title, excerpt, or path…" />
     <select bind:value={prefix} onchange={load}>
       <option value="">All domains</option>
@@ -267,66 +269,85 @@
 {/if}
 
 <style>
-  header { position: sticky; top: 0; z-index: 5; background: var(--color-background); border-bottom: 1px solid var(--color-border); padding: 12px 18px; }
-  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .capture { margin-top: 10px; }
-  h1 { font-size: 14.5px; margin: 0; font-weight: 620; letter-spacing: -.01em; }
-  h1 span { color: var(--color-text-muted); font-weight: 420; font-size: 13px; }
-  input, select, button { font: inherit; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid var(--color-border); background: var(--color-surface); color: var(--color-text); }
+  /* The family idiom, from augment-it's member stylesheets: a monospace
+     instrument panel where every element carries a 1px border, chips and
+     buttons sit on --color-surface-raised, inputs on --color-field, and hover
+     is expressed on the BORDER rather than the fill. An earlier pass here
+     renamed the tokens to match augment-it and changed nothing visible, which
+     is what a rename does. This is the part that shows. */
+
+  header { position: sticky; top: 0; z-index: 5; background: var(--color-surface); border-bottom: 1px solid var(--color-border); padding: 8px 16px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .capture { margin-top: 8px; }
+  h1 { font-size: 13px; margin: 0; font-weight: 700; letter-spacing: 0; }
+  h1 span { color: var(--color-text-muted); font-weight: 400; }
+
+  /* The control primitive. Everything below states only what differs from it. */
+  input, select, button { font: inherit; padding: .35rem .5rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-field); color: var(--color-text); }
+  input:focus-visible, select:focus-visible, button:focus-visible { outline: none; border-color: var(--color-accent); box-shadow: var(--focus-ring); }
+  button { background: var(--color-surface-raised); cursor: pointer; padding: .35rem .7rem; }
+  button:hover:not(:disabled) { border-color: var(--color-accent); }
+  button:disabled { opacity: .5; cursor: default; }
   input[type='search'], .capture input:first-of-type { flex: 1; min-width: 200px; }
   .dom { width: 190px; }
-  .check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-text-muted); flex: 0 0 auto; white-space: nowrap; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); flex: 0 0 auto; white-space: nowrap; }
   .check input { width: auto; min-width: 0; padding: 0; margin: 0; accent-color: var(--color-accent); }
-  button { cursor: pointer; }
-  button:disabled { opacity: .5; cursor: default; }
-  .ro { margin: 8px 0 0; font-size: 12.5px; color: var(--color-text-muted); }
-  code { font-family: var(--font-mono); font-size: 12px; }
-  main { padding: 16px 18px 60px; max-width: 1100px; }
-  .count { color: var(--color-text-muted); font-size: 13px; margin: 0 0 12px; }
-  .note { color: var(--color-text-muted); padding: 10px 0; }
+  .ro { margin: 6px 0 0; font-size: 11px; color: var(--color-text-muted); }
+  code { font-size: 11px; }
+
+  main { padding: 12px 16px 60px; max-width: 1100px; }
+  .count { color: var(--color-text-muted); font-size: 11px; margin: 0 0 10px; }
+  .note { color: var(--color-text-muted); padding: 8px 0; }
   .note.ok { color: var(--color-accent); }
   .note.err { color: var(--color-warn-text); }
-  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
-  li { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); box-shadow: var(--fx-card-shadow); }
+
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  li { background: var(--color-surface); border: 1px solid var(--fx-card-border); border-radius: var(--radius-md); }
   li.err { border-color: var(--color-warn-text); }
-  .card { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 12px 14px; border-radius: var(--radius-md); }
-  .card:hover { background: var(--color-surface-hover); }
-  .t { font-weight: 580; margin-bottom: 3px; }
+  .card { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 9px 11px; border-radius: var(--radius-md); }
+  /* Hover moves the border, not the fill — 845 rows of shifting background is
+     noise, and it is how every control in the family signals the same thing. */
+  .card:hover { background: none; }
+  li:has(.card:hover) { border-color: var(--fx-card-border-hover); }
+  .card:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+  /* The one reading surface. Title and excerpt keep the sans face because this
+     is a list someone scans for meaning; everything around them is instrument. */
+  .t { font-family: var(--font-reading); font-size: 14px; font-weight: 600; letter-spacing: -.01em; margin-bottom: 2px; }
+  .e { font-family: var(--font-reading); font-size: 13px; color: var(--color-text-muted); }
   li.err .t { color: var(--color-warn-text); }
-  .x { color: var(--color-text-muted); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
-  .e { color: var(--color-text-muted); font-size: 13.5px; }
-  /* Everything below inherits the global `input, select, button` rule above —
-     the `control` component in DESIGN.md — and states only what differs. An
-     earlier draft restated font, border, background and padding on each new
-     control and swapped --radius-sm for --radius-md, which is how a design
-     system quietly stops being one. */
+  .x { color: var(--color-text-muted); font-size: 11px; margin-bottom: 4px; word-break: break-all; }
 
   .tabs { display: flex; gap: 6px; margin: 0 0 var(--space-md); }
-  .tabs button { border-radius: var(--radius-pill); color: var(--color-text-muted); }
-  .tabs button.on { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; }
+  .tabs button { border-radius: var(--radius-pill); color: var(--color-text-muted); font-size: 12px; }
+  .tabs button.on { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
 
-  .repo { display: flex; gap: 10px; margin-bottom: var(--space-sm); }
-  .repo input { flex: 1; min-width: 200px; font-family: var(--font-mono); }
-  .repo button.go { background: var(--color-accent); color: var(--color-on-accent); border-color: transparent; }
+  .repo { display: flex; gap: 8px; margin-bottom: var(--space-sm); }
+  .repo input { flex: 1; min-width: 200px; }
+  .repo button.go { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
 
   /* A feed entry is a card that is not clickable — same padding and radius, no
      hover, because there is nothing to open. */
   .feed { list-style: none; padding: 0; margin: 0; }
-  .feed li { padding: 12px 14px; border-radius: var(--radius-md); }
+  .feed li { padding: 9px 11px; border-radius: var(--radius-md); }
   .feed li + li { border-top: 1px solid var(--color-border); border-radius: 0; }
-  .feed .when { color: var(--color-text-muted); font-size: 12.5px; }
-  .feed .why { font-weight: 580; margin: 3px 0 5px; }
-  .feed .counts { display: flex; gap: 10px; color: var(--color-text-muted); font-size: 13.5px; }
+  .feed .when { color: var(--color-text-muted); font-size: 11px; }
+  .feed .why { font-family: var(--font-reading); font-size: 13px; font-weight: 600; margin: 2px 0 4px; }
+  .feed .counts { display: flex; gap: 10px; color: var(--color-text-muted); font-size: 11px; }
 
-  .getpdf { display: inline-block; margin: 0 0 8px 14px; font-size: 12.5px; color: var(--color-accent); text-decoration: none; }
+  .getpdf { display: inline-block; margin: 0 0 7px 11px; font-size: 11px; color: var(--color-accent); text-decoration: none; }
   .getpdf:hover { text-decoration: underline; }
 
-  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-  .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--color-chip-bg); color: var(--color-text-muted); }
-  .chip.on { background: var(--color-accent); color: var(--color-on-accent); }
+  /* A chip is bordered and sits on the raised surface, so a row of them reads
+     as a row of keys rather than a row of highlights. */
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 7px; }
+  .chip { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); }
+  .chip.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+
+  .mode { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: var(--color-text-muted); min-width: 68px; }
   .backdrop { position: fixed; inset: 0; background: var(--fx-scrim); display: grid; place-items: center; padding: 24px; }
-  .modal { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
-  .mhead { border-bottom: 1px solid var(--color-border); padding: 12px 16px; }
+  .modal { background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
+  .mhead { border-bottom: 1px solid var(--color-border); padding: 9px 13px; }
   .mhead h1 { flex: 1; }
-  pre { margin: 0; padding: 16px 18px; overflow: auto; font-size: 12.5px; font-family: var(--font-mono); white-space: pre-wrap; word-break: break-word; max-height: 66vh; }
+  pre { margin: 0; padding: 13px 15px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 66vh; }
 </style>

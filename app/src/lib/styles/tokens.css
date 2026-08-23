@@ -1,92 +1,129 @@
 /**
- * Design tokens — two tiers, in the ai-labs family vocabulary.
+ * theme.css — the Lossless two-tier token system, three-mode contract.
  *
- *   Tier 1  --color__navy-500     THE THINGS WE HAVE. Raw values, `__` separator,
- *                                 mode-independent. Components never read these.
- *   Tier 2  --color-surface       THE JOBS THEY DO. Points at Tier 1. Re-pointed
- *                                 per mode. This is all a component may touch.
- *   Tier 3  --fx-card-shadow      Tier 2 for composite values — a shadow, a scrim.
- *                                 Same rules; no literal colour (see below).
+ * Follows `astro-knots/context-v/blueprints/Maintain-Themes-Mode-Across-CSS-Tailwind.md`
+ * and the `theme-system` skill. Not Tailwind here — the tokens are plain custom
+ * properties — but the architecture is the house one, unchanged.
  *
- * WHY THESE NAMES AND NOT SHORTER ONES. The spelling is augment-it's, from
- * `augment-it/packages/theme/theme.css`, which is the only place in ai-labs
- * where a design system actually exists — eleven checked rules, a drift script,
- * three modes, contrast measured across all 108 text-on-surface pairs. This file
- * once used `--ink`, `--line`, `--bg`. Those were fine names and completely
- * private, which meant a component could not move between the two repos without
- * a rename first. Since patterns travel this tree knots-style — copy-from, never
- * a shared package — the vocabulary IS the interface. Renamed 2026-08-22.
+ * ── THE LAYERING (blueprint §2.3) ───────────────────────────────────────────
  *
- * The PALETTE is deliberately not augment-it's. Navy / cyan / amber and Inter
- * come from `memopop-ai/packages/shared-styles`; augment-it is magenta on
- * near-black in monospace. Names are the portable part, hue is the brand part,
- * and conflating them would have repainted this app to settle a naming question.
+ *   1. NAMED PALETTE     :root, `--color__graphite-950`, `--font__inter`
+ *                        Tier 1. Raw values. BEM `__` separator. The brand's
+ *                        list of "things we have." Components never read these.
  *
- * ONE PIECE OF GENEALOGY WORTH KEEPING. memopop-native does not consume
- * `@memopop/shared-styles` despite its CLAUDE.md saying it does — its components
- * carry ~700 colour literals and reinvent a fragment of a token system twice,
- * locally and under two different names (`--ctl-*` in DealWorkspace.svelte,
- * `--s-*` in SourceApproval.svelte). That is what this architecture prevents,
- * and it is why the primitives below were taken from the package rather than
- * from the app that nominally uses it.
+ *   2. THEME BINDINGS    [data-theme='labs'][data-mode='dark'] { … }
+ *                        Tier 2. Semantic roles — `--color-surface`,
+ *                        `--font-body`, `--fx-card-shadow` — each pointing at a
+ *                        named token. Re-pointed per theme AND per mode.
  *
- * THE RULES, all three checkable:
- *   1. No component reads a Tier-1 name. `var(--color-text)`, never
- *      `var(--color__navy-900)`.  →  grep for `var(--color__` outside this file.
- *   2. No colour literal outside Tier 1 — including inside a shadow. A literal
- *      in Tier 2 or 3 is a colour that exists in the product and has no name.
- *   3. Step numbers track darkness in every ramp. A name that lies is worse than
- *      a number, because an agent will reason from it. (augment-it shipped this
- *      as defect A19 after its greyscale ramps stopped being monotonic.)
+ *   3. CONSUMERS         components read Tier 2 only, and are stable across
+ *                        every theme and mode.
+ *
+ * The visual rule: see `__` → raw named token. See only `-` → semantic role.
+ * `--fx-*` tokens are semantic tier too (blueprint §9.2) — they are effects,
+ * not a third naming layer.
+ *
+ * ── TWO AXES, NOT ONE ───────────────────────────────────────────────────────
+ *
+ *   data-theme   which brand.  `labs` today. A `didi` theme is a separate piece
+ *                of work — converging the didi.sh brand onto this palette is
+ *                not something to do by accident while restyling an app.
+ *   data-mode    light | dark | vibrant. Three, never two (blueprint §1).
+ *                Vibrant is DARK-based — the classic error is letting it inherit
+ *                light's white background.
+ *
+ * ── THE PALETTE ─────────────────────────────────────────────────────────────
+ *
+ * Electric magenta on near-black, from `augment-it/packages/theme/theme.css` —
+ * the most built-out surface in ai-labs, and the palette its contrast pass
+ * verified across all 108 text-on-surface pairs.
+ *
+ * This file previously carried navy / cyan / amber from
+ * `memopop-ai/packages/shared-styles`, on the reasoning that it was the family
+ * brand. It is not: NO SHIPPING APP CONSUMES THAT PACKAGE. memopop-native does
+ * not import it despite its CLAUDE.md saying it does — it renders violet
+ * (`#5b21b6`, `#a855f7`, `#c4b5fd`) out of ~700 hardcoded literals. augment-it
+ * renders electric magenta. Both live surfaces are the same violet-magenta
+ * family; shared-styles is a fourth palette nothing draws. Sourcing from it
+ * produced an app that matched nothing.
+ *
+ * ── THE ONE DELIBERATE DIVERGENCE ───────────────────────────────────────────
+ *
+ * `--font-reading`. augment-it is monospace throughout; it operates records.
+ * This app is *read* — 845 source titles and excerpts scanned for meaning, where
+ * mono costs scanning speed. So chrome is `--font-body` (mono, like the family)
+ * and the reading surface alone is `--font-reading` (Inter). Stated in DESIGN.md
+ * as the single exception.
+ *
+ * ── THE RULES — `node scripts/design-drift.mjs` ─────────────────────────────
+ *   D1  no component reads a named token   D4  DESIGN.md agrees with this file
+ *   D2  no colour literal below Tier 1     D5  no component reads an undeclared token
+ *   D3  a higher step number is never lighter
  */
+
+/* ═══ TIER 1 — the named palette. "The things we have." ══════════════════ */
 :root {
-  /* ── Tier 1: primitives ────────────────────────────────────────────── */
+  /* greyscale — dark side */
+  --color__graphite-1000: #0c0d12;
+  --color__graphite-950:  #0f1115;
+  --color__graphite-900:  #16181f;
+  --color__graphite-850:  #1a1d27;
+  --color__graphite-800:  #232634;
+  --color__graphite-700:  #232634;
+  --color__graphite-600:  #646785;
+  --color__mist-100:      #e8eaf0;
+  --color__mist-400:      #8a8f9b;
 
-  --color__navy-50: #f0f5f8;
-  --color__navy-100: #dae5ed;
-  --color__navy-200: #b5cbdb;
-  --color__navy-300: #8fb1c9;
-  --color__navy-400: #6a97b7;
-  --color__navy-500: #1a3a52;
-  --color__navy-600: #162f43;
-  --color__navy-700: #112434;
-  --color__navy-800: #0d1925;
-  --color__navy-900: #080e16;
+  /* greyscale — light side (warm paper / ink) */
+  --color__paper-0:   #ffffff;
+  --color__paper-50:  #faf9f6;
+  --color__paper-100: #f1efe9;
+  --color__paper-200: #f4f2ec;
+  --color__paper-300: #ddd9cd;
+  --color__paper-400: #c4bfb0;
+  --color__ink-900:   #1b1d22;
+  --color__ink-500:   #686c77;
 
-  --color__cyan-50: #e6fafa;
-  --color__cyan-100: #ccf5f5;
-  --color__cyan-200: #99ebeb;
-  --color__cyan-300: #66e1e1;
-  --color__cyan-400: #33d7d7;
-  --color__cyan-500: #1dd3d3;
-  --color__cyan-600: #17a9a9;
-  --color__cyan-700: #127f7f;
-  --color__cyan-800: #0c5555;
-  --color__cyan-900: #062b2b;
+  /* greyscale — vibrant side. Violet-tinted near-black: vibrant is DARK-based. */
+  --color__void-1000: #0a0710;
+  --color__void-950:  #0c0814;
+  --color__void-900:  #1c1429;
+  --color__void-850:  #241934;
+  --color__void-800:  #3a2a52;
+  --color__void-700:  #16101f;
+  --color__void-600:  #6b5d88;
+  --color__halo-100:  #f4ecff;
+  --color__halo-400:  #a594c4;
 
-  --color__amber-50: #fefce8;
-  --color__amber-100: #fef9c3;
-  --color__amber-200: #fef08a;
-  --color__amber-300: #fde047;
-  --color__amber-400: #facc15;
-  --color__amber-500: #f59e0b;
-  --color__amber-600: #d97706;
-  --color__amber-700: #b45309;
-  --color__amber-800: #92400e;
-  --color__amber-900: #78350f;
+  /* accents — magenta-violet + cyan, one entry per intensity */
+  --color__magenta-electric: #c75bfb;
+  --color__magenta-deep:     #9a3fd4;
+  --color__magenta-loud:     #d96bff;
+  --color__cyan-bright:      #5bbcfb;
+  --color__cyan-deep:        #2563a8;
+  --color__cyan-loud:        #54c8ff;
 
-  --color__slate-0: #ffffff;
-  --color__slate-50: #f8fafc;
-  --color__slate-600: #64748b;
-  --color__slate-900: #1a2332;
-  --color__slate-1000: #000000;
+  /* status — amber is this app's single alarm: a source that would not parse */
+  --color__amber-void:   #2a1d08;
+  --color__amber-deep:   #3d2c0c;
+  --color__amber-ink:    #95621d;
+  --color__amber-bright: #f5c971;
+  --color__amber-neon:   #ffd47d;
+  --color__amber-wash:   #fbeed1;
 
-  --font-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  /* shadow — named so no --fx-* token has to carry a literal */
+  --color__shadow-black: #000000;
+  --color__shadow-ink:   #1b1d22;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* typefaces */
+  --font__jetbrains-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font__inter:          Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* dimensional scales — no Tier 1. A scale has no second thing to point at,
+     so the indirection would only restate the number. */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
   --radius-pill: 100px;
 
   --space-xs: 0.25rem;
@@ -94,85 +131,110 @@
   --space-md: 1rem;
   --space-lg: 1.5rem;
   --space-xl: 2rem;
-
-  /* ── Tier 2: semantic (light) ──────────────────────────────────────── */
-
-  --color-background: var(--color__slate-50);
-  --color-surface: var(--color__slate-0);
-  --color-surface-hover: var(--color__navy-50);
-  --color-text: var(--color__slate-900);
-  --color-text-muted: var(--color__slate-600);
-  --color-border: var(--color__navy-100);
-  --color-accent: var(--color__navy-500);
-  --color-on-accent: var(--color__slate-0);
-  --color-focus: var(--color__cyan-500);
-  --color-warn-text: var(--color__amber-700);
-  --color-chip-bg: var(--color__navy-50);
-  --fx-card-shadow: 0 1px 2px color-mix(in srgb, var(--color__slate-900) 6%, transparent),
-                    0 4px 12px color-mix(in srgb, var(--color__slate-900) 4%, transparent);
-  --fx-scrim: color-mix(in srgb, var(--color__slate-1000) 45%, transparent);
-
-  /* Composed from Tier 2, so it needs no per-mode copy. Present so an
-     augment-it component's `box-shadow: var(--focus-ring)` resolves. */
-  --focus-ring: 0 0 0 2px var(--color-background), 0 0 0 3px var(--color-focus);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Same primitives, different jobs. Nothing invented. */
-    --color-background: var(--color__navy-900);
-    --color-surface: var(--color__navy-800);
-    --color-surface-hover: var(--color__navy-700);
-    --color-text: var(--color__navy-50);
-    --color-text-muted: var(--color__navy-300);
-    --color-border: var(--color__navy-700);
-    --color-accent: var(--color__cyan-500);
-    --color-on-accent: var(--color__navy-900);
-    --color-focus: var(--color__cyan-400);
-    --color-warn-text: var(--color__amber-400);
-    --color-chip-bg: var(--color__navy-700);
-    --fx-card-shadow: none;
-    --fx-scrim: color-mix(in srgb, var(--color__slate-1000) 62%, transparent);
-  }
+/* ═══ TIER 2 — theme bindings. Semantic roles, per theme × mode. ═════════ */
+
+/* DARK — the default. The family is dark-native, so a document with
+   data-theme='labs' and no data-mode resolves here. */
+[data-theme='labs'],
+[data-theme='labs'][data-mode='dark'] {
+  --color-background:     var(--color__graphite-950);
+  --color-surface:        var(--color__graphite-700);
+  --color-surface-2:      var(--color__graphite-900);
+  --color-surface-raised: var(--color__graphite-1000);
+  --color-bg-elevated:    var(--color__graphite-850);
+  --color-field:          var(--color__graphite-900);
+  --color-field-focus:    var(--color__graphite-850);
+  --color-border:         var(--color__graphite-800);
+  --color-border-strong:  var(--color__graphite-600);
+  --color-text:           var(--color__mist-100);
+  --color-text-muted:     var(--color__mist-400);
+  --color-accent:         var(--color__magenta-electric);
+  --color-accent-2:       var(--color__cyan-bright);
+  --color-on-accent:      var(--color__graphite-950);
+  --color-link:           var(--color__cyan-bright);
+  --color-warn-bg:        var(--color__amber-deep);
+  --color-warn-text:      var(--color__amber-bright);
+
+  --font-body:    var(--font__jetbrains-mono);
+  --font-code:    var(--font__jetbrains-mono);
+  --font-reading: var(--font__inter);
+
+  --focus-ring: 0 0 0 2px var(--color__graphite-950), 0 0 0 3px var(--color__magenta-electric);
+
+  /* NOT --color-border. In this palette graphite-800 and graphite-700 are the
+     same hex, so `border: 1px solid var(--color-border)` on a surface paints
+     nothing — augment-it's open gate A22, measured there at 1.2-1.5:1 against a
+     3:1 requirement. A darker hairline reads as a seam between card and page
+     and keeps the border available for hover to move. Rendered and checked in
+     all three modes on 2026-08-22; light and vibrant do not have this problem. */
+  --fx-card-border:       var(--color__graphite-850);
+  --fx-card-border-hover: var(--color__magenta-electric);
+  --fx-card-shadow:       0 1px 3px color-mix(in srgb, var(--color__shadow-black) 35%, transparent);
+  --fx-glow-opacity:      0.25;
+  --fx-scrim:             color-mix(in srgb, var(--color__shadow-black) 62%, transparent);
 }
 
-/* Explicit override wins over the media query in both directions, so a future
-   in-app toggle works without restructuring. */
-:root[data-mode="light"] {
-  --color-background: var(--color__slate-50);
-  --color-surface: var(--color__slate-0);
-  --color-surface-hover: var(--color__navy-50);
-  --color-text: var(--color__slate-900);
-  --color-text-muted: var(--color__slate-600);
-  --color-border: var(--color__navy-100);
-  --color-accent: var(--color__navy-500);
-  --color-on-accent: var(--color__slate-0);
-  --color-focus: var(--color__cyan-500);
-  --color-warn-text: var(--color__amber-700);
-  --color-chip-bg: var(--color__navy-50);
-  --fx-card-shadow: 0 1px 2px color-mix(in srgb, var(--color__slate-900) 6%, transparent),
-                    0 4px 12px color-mix(in srgb, var(--color__slate-900) 4%, transparent);
-  --fx-scrim: color-mix(in srgb, var(--color__slate-1000) 45%, transparent);
+/* LIGHT */
+[data-theme='labs'][data-mode='light'] {
+  --color-background:     var(--color__paper-50);
+  --color-surface:        var(--color__paper-0);
+  --color-surface-2:      var(--color__paper-100);
+  --color-surface-raised: var(--color__paper-100);
+  --color-bg-elevated:    var(--color__paper-200);
+  --color-field:          var(--color__paper-200);
+  --color-field-focus:    var(--color__paper-0);
+  --color-border:         var(--color__paper-300);
+  --color-border-strong:  var(--color__paper-400);
+  --color-text:           var(--color__ink-900);
+  --color-text-muted:     var(--color__ink-500);
+  --color-accent:         var(--color__magenta-deep);
+  --color-accent-2:       var(--color__cyan-deep);
+  --color-on-accent:      var(--color__paper-0);
+  --color-link:           var(--color__cyan-deep);
+  --color-warn-bg:        var(--color__amber-wash);
+  --color-warn-text:      var(--color__amber-ink);
+
+  --focus-ring: 0 0 0 2px var(--color__paper-0), 0 0 0 3px var(--color__magenta-deep);
+
+  --fx-card-border:       var(--color__paper-300);
+  --fx-card-border-hover: var(--color__magenta-deep);
+  --fx-card-shadow:       0 1px 3px color-mix(in srgb, var(--color__shadow-ink) 8%, transparent);
+  --fx-glow-opacity:      0.08;
+  --fx-scrim:             color-mix(in srgb, var(--color__shadow-ink) 38%, transparent);
 }
 
-:root[data-mode="dark"] {
-  --color-background: var(--color__navy-900);
-  --color-surface: var(--color__navy-800);
-  --color-surface-hover: var(--color__navy-700);
-  --color-text: var(--color__navy-50);
-  --color-text-muted: var(--color__navy-300);
-  --color-border: var(--color__navy-700);
-  --color-accent: var(--color__cyan-500);
-  --color-on-accent: var(--color__navy-900);
-  --color-focus: var(--color__cyan-400);
-  --color-warn-text: var(--color__amber-400);
-  --color-chip-bg: var(--color__navy-700);
-  --fx-card-shadow: none;
-  --fx-scrim: color-mix(in srgb, var(--color__slate-1000) 62%, transparent);
+/* VIBRANT — dark-based, louder accent, real glow. */
+[data-theme='labs'][data-mode='vibrant'] {
+  --color-background:     var(--color__void-950);
+  --color-surface:        var(--color__void-700);
+  --color-surface-2:      var(--color__void-900);
+  --color-surface-raised: var(--color__void-1000);
+  --color-bg-elevated:    var(--color__void-850);
+  --color-field:          var(--color__void-900);
+  --color-field-focus:    var(--color__void-850);
+  --color-border:         var(--color__void-800);
+  --color-border-strong:  var(--color__void-600);
+  --color-text:           var(--color__halo-100);
+  --color-text-muted:     var(--color__halo-400);
+  --color-accent:         var(--color__magenta-loud);
+  --color-accent-2:       var(--color__cyan-loud);
+  --color-on-accent:      var(--color__void-950);
+  --color-link:           var(--color__cyan-loud);
+  --color-warn-bg:        var(--color__amber-void);
+  --color-warn-text:      var(--color__amber-neon);
+
+  --focus-ring: 0 0 0 2px var(--color__void-950), 0 0 0 3px var(--color__magenta-loud);
+
+  --fx-card-border:       var(--color__void-800);
+  --fx-card-border-hover: var(--color__magenta-loud);
+  --fx-card-shadow:       0 0 24px color-mix(in srgb, var(--color__magenta-loud) 12%, transparent);
+  --fx-glow-opacity:      0.5;
+  --fx-scrim:             color-mix(in srgb, var(--color__shadow-black) 68%, transparent);
 }
 
-/* ── Base, from shared-styles/globals.css ────────────────────────────── */
-
+/* ═══ Base ═══════════════════════════════════════════════════════════════ */
 *,
 *::before,
 *::after {
@@ -186,14 +248,35 @@ html {
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
-  font-size: 14.5px;
-  line-height: 1.55;
+  font: 13px/1.45 var(--font-body);
   color: var(--color-text);
   background: var(--color-background);
 }
 
+/* 75ms so cycling modes feels instant but not jarring (blueprint §8.4) */
+body,
+body * {
+  transition: background-color 75ms ease, border-color 75ms ease, color 75ms ease;
+}
+
 :focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* box-shadow does not survive forced-colors; restore a real outline there. */
+@media (forced-colors: active) {
+  *:focus-visible {
+    outline: 2px solid ButtonText;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body,
+  body * {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

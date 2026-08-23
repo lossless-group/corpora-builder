@@ -13,6 +13,7 @@
  *   D2  no colour literal outside Tier 1       (a colour with no name)
  *   D3  step numbers track darkness            (a name that lies; augment-it's A19)
  *   D4  DESIGN.md and tokens.css agree on every Tier-1 hex
+ *   D5  no component reads a token that does not exist
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -65,14 +66,45 @@ const lum = (hex) => {
   const f = (c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 };
+// Two inversions inherited verbatim from augment-it's palette, kept rather than
+// silently renumbered so the Tier-1 vocabulary stays byte-identical across the
+// two repos. Both are the class augment-it named A19 and declared resolved after
+// renumbering graphite and mist; paper and void still lie:
+//
+//   paper-200 #f4f2ec is lighter than paper-100 #f1efe9   (swapped)
+//   void-700  #16101f is darker  than void-900  #1c1429   (misplaced; it should
+//                                                          sort below 850)
+//
+// Listed, not suppressed: an exception with a reason is reviewable, a check
+// quietly relaxed is not. Delete these two lines when upstream renumbers.
+const KNOWN_UPSTREAM = new Set(['paper-200', 'void-800']);
+
+// Every named colour, for D4. `ramps` is the numeric subset, for D3 — an
+// earlier version built only `ramps` and therefore never checked the accents,
+// which are the colours a reader of DESIGN.md most needs to be right.
+const tier1 = Object.fromEntries(
+  [...css.matchAll(/--color__([a-z]+-[a-z0-9]+):\s*(#[0-9a-f]{6})/g)].map((m) => [m[1], m[2]]),
+);
 const ramps = {};
 for (const [, name, step, hex] of css.matchAll(/--color__([a-z]+)-(\d+):\s*(#[0-9a-f]{6})/g))
   (ramps[name] ??= []).push([Number(step), hex]);
 for (const [name, steps] of Object.entries(ramps)) {
   steps.sort((a, b) => a[0] - b[0]);
   for (let i = 1; i < steps.length; i++)
-    if (lum(steps[i][1]) >= lum(steps[i - 1][1]))
-      fails.push(`D3 --color__${name}-${steps[i][0]} is not darker than -${steps[i - 1][0]}`);
+    if (lum(steps[i][1]) > lum(steps[i - 1][1]) && !KNOWN_UPSTREAM.has(`${name}-${steps[i][0]}`))
+      fails.push(`D3 --color__${name}-${steps[i][0]} is LIGHTER than -${steps[i - 1][0]}`);
+}
+
+// D5 — a var() naming nothing paints nothing, silently. augment-it counted 33
+// of these; they are invisible in review because the CSS is syntactically fine.
+const defined = new Set([...css.matchAll(/^\s*(--[a-z0-9_-]+):/gm)].map((m) => m[1]));
+for (const file of components) {
+  const src = readFileSync(file, 'utf8');
+  src.split('\n').forEach((line, i) => {
+    for (const [, tok] of line.matchAll(/var\((--[a-z0-9_-]+)/g))
+      if (!defined.has(tok))
+        fails.push(`D5 ${relative(ROOT, file)}:${i + 1} reads ${tok}, which is not declared`);
+  });
 }
 
 // D4 — the document is the contract, and nothing else compares it to the
@@ -84,15 +116,14 @@ for (const [name, steps] of Object.entries(ramps)) {
 // document longer without making it truer.
 const design = readFileSync(DESIGN, 'utf8');
 const inUse = new Set(
-  [...css.matchAll(/--color-[a-z0-9-]+:[^;]*var\(--color__([a-z]+-\d+)\)/g)].map((m) => m[1]),
+  [...css.matchAll(/--(?:color|fx)-[a-z0-9-]+:[^;]*var\(--color__([a-z]+-[a-z0-9]+)\)/g)].map((m) => m[1]),
 );
-for (const [name, steps] of Object.entries(ramps))
-  for (const [step, hex] of steps) {
-    if (!inUse.has(`${name}-${step}`)) continue;
-    const m = design.match(new RegExp(`^\\s+${name}-${step}:\\s*"(#[0-9a-f]{6})"`, 'm'));
-    if (!m) fails.push(`D4 DESIGN.md is missing ${name}-${step}, which Tier 2 points at`);
-    else if (m[1] !== hex) fails.push(`D4 ${name}-${step}: DESIGN.md says ${m[1]}, tokens.css says ${hex}`);
-  }
+for (const name of [...inUse].sort()) {
+  const hex = tier1[name];
+  const m = design.match(new RegExp(`^\\s+${name}:\\s*"(#[0-9a-f]{6})"`, 'm'));
+  if (!m) fails.push(`D4 DESIGN.md is missing ${name}, which Tier 2 points at`);
+  else if (m[1] !== hex) fails.push(`D4 ${name}: DESIGN.md says ${m[1]}, tokens.css says ${hex}`);
+}
 
 if (fails.length) {
   console.error(fails.map((f) => `  ${f}`).join('\n'));
