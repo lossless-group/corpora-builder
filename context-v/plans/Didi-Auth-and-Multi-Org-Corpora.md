@@ -10,7 +10,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-at_semantic_version: 0.0.2.0
+at_semantic_version: 0.0.3.0
 status: Draft
 site_uuid: 3094ab40-f457-48fb-8b10-0649600c35f6
 hex_code: 3lubaj
@@ -73,10 +73,10 @@ own words: *"I created accounts for palmer-ai with a human.vc email."*
 the same auto-join hint that plan already argues for on workspaces. That is one
 more line of an argument already made and signed off, not a new position.
 
-### Two specs disagree about the table
+### Two specs disagreed about the table — resolved
 
-This has to be resolved before "create four orgs" means anything, because the
-two specs do not describe the same schema:
+The two specs did not describe the same schema, and creating four entities meant
+choosing:
 
 | | `Id-Didi-Sh-Identity-Service` | `Flexible-Entity-Relationships` |
 |---|---|---|
@@ -88,10 +88,10 @@ two specs do not describe the same schema:
 on an empirical ground worth repeating: *"projects are collaborations among many
 organizations. A project that belongs to one org is the exception."*
 
-**Gate 1 — operator call.** Creating Reach Edu, Humain VC, Palmer AI and
-NextLadder means choosing a table. Recommendation: **`entities`**, per the newer
-ruling, with `organizations` becoming a view or a `kind`. The identity spec's
-`workspaces.org_id` is the containment that ruling withdrew.
+**Resolved 2026-08-23 — `entities`, keyed by `entities.slug`.** One table,
+`kind` a display label, no `parent_id`. `organizations` and `workspaces`
+reconcile toward it. The handle **is** `entities.slug`: `[reach-edu]`,
+`[humain-vc]`, `[palmer-ai]`, `[nextladder]`.
 
 ### The four, and what NextLadder proves
 
@@ -243,6 +243,23 @@ no structural meaning."*
    Backspace exists to walk *up* that cascade, which is why `funders/` is a legal
    filter value rather than a malformed one.
 
+   **And the cascade is invoked, not stored** (operator, 2026-08-23): an entity
+   or domain named by its slug alone is *independent*; a **chained** reference —
+   `organization:palmer-ai:workspace:q3` — is a different act, and writing the
+   chain is what authorises parent-child behaviour in the UX and in how data is
+   fetched and transformed. `entities.slug.cascade` is that derived chained form,
+   built per call, never persisted.
+
+   That settles two things here at a stroke:
+
+   - **`FederatedStore` keys on the bare slug** — `@palmer-ai/…` — because
+     entities are independent at rest. Cascades live in *references*, not in
+     storage. So catch 2 and catch 3 do not interact, which is the cheapest
+     possible answer.
+   - **Folder nesting needed no design.** A path *is* a written chain, so it
+     already cascades; `_in_domain`'s prefix test is what honouring one looks
+     like. Nothing to add.
+
    So the work is not to invent cascading; it is to give the **tag** the same
    cascade the **path** already has. Focusing `domain:strategy` must match a
    source tagged `domain:strategy:workforce-development`, by the same prefix rule
@@ -268,13 +285,12 @@ no structural meaning."*
 Ordered so that each is useful alone and nothing waits on a gate it could have
 avoided.
 
-### Phase 0 — decide the schema *(ai-labs, no code)*
-Gate 1 — `entities` vs `organizations` + `workspaces` — and nothing else. The
-"cascade" question resolved itself into a definition rather than a rename, and
-that definition is now recorded in
-[[../../../context-v/specs/Flexible-Entity-Relationships-to-Mirror-Messy-IRL-Collaboration]].
-Amend the canonical spec; nothing below starts first. This is Phase A of the
-2026-08-08 plan with the org-identity and multi-select additions folded in.
+### Phase 0 — write down what was decided *(ai-labs, no code)* — **done**
+Both gates closed on 2026-08-23. `entities` keyed by `entities.slug`; the cascade
+is invoked rather than stored. Recorded in
+[[../../../context-v/specs/Flexible-Entity-Relationships-to-Mirror-Messy-IRL-Collaboration]]
+and [[../../../context-v/specs/Id-Didi-Sh-Identity-Service]]. Nothing below is
+blocked now.
 
 ### Phase 1 — `normalized_url` backfill *(corpora-builder, local)*
 511 filed sources, no network, reversible. Wanted by the multibox work and by
