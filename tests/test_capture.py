@@ -11,6 +11,7 @@ and says nothing about what Jina returns for a real page.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -247,10 +248,11 @@ def test_a_pdf_is_filed_into_bin_and_pointed_at_not_copied_beside(
     assert asset.sha256 in asset.binary_key
     assert store.read(asset.binary_key) == pdf
 
-    # provenance is carried even when nothing was optimized
-    assert asset.source_sha256 == asset.sha256
-    assert asset.source_bytes == asset.bytes == len(pdf)
+    # provenance: sha256/size_bytes keep meaning the publisher's file
+    assert asset.sha256 == hashlib.sha256(pdf).hexdigest()
+    assert asset.size_bytes == len(pdf)
     assert asset.optimized is False
+    assert asset.optimized_sha256 == "" and asset.optimized_bytes == 0
 
     # and emphatically NOT beside the markdown
     assert result.path[: -len(".md")] + ".pdf" not in store.list("")

@@ -43,6 +43,10 @@ class GitChangeSource(ChangeSource):
 
     def __init__(self, repo: str | Path) -> None:
         self.repo = Path(repo).resolve()
+        if not self.repo.is_dir():
+            # Otherwise subprocess raises FileNotFoundError on cwd= and the
+            # sidecar turns a bad path into a 500 instead of a 400.
+            raise GitRepoError(f"no such directory: {self.repo}")
         if not (self.repo / ".git").exists() and not self._is_worktree():
             raise GitRepoError(f"not a git repository: {self.repo}")
 

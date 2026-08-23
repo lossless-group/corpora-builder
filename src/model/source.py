@@ -120,21 +120,33 @@ class BinaryAsset:
     (`Binary-Ingest-And-Bin-Store.md`), so `binary_key` is the real address and
     `filename` survives only as a human-readable label.
 
-    Two digests on purpose. `sha256` addresses what you can fetch;
-    `source_sha256` records what the publisher served. They differ whenever
-    `optimized` is true, and keeping only one loses either retrievability or
-    citability.
+    **The field names mirror what real wrappers carry, not what was convenient.**
+    `sha256` and `size_bytes` mean the publisher's file, as they always have; the
+    optimized artifact gets `optimized_sha256` / `optimized_bytes`. An earlier
+    draft renamed `size_bytes` to `bytes` and redefined `sha256` to mean the
+    stored copy, which would have silently changed the meaning of a key across
+    34 client files.
     """
 
     filename: str = ""
-    bytes: int = 0
+    content_type: str = ""
+    #: The publisher's file. These two keep the meanings the corpus already gave
+    #: them and are never rewritten — see src/binary/pointer.py.
+    size_bytes: int = 0
     sha256: str = ""
     downloaded_at: str = ""
     download_status: str = ""
+    #: Added by the bin/ migration. `binary_key` addresses the working copy.
     binary_key: str = ""
-    source_sha256: str = ""
-    source_bytes: int = 0
     optimized: bool = False
+    #: Present only when `optimized` is true — the stored artifact.
+    optimized_sha256: str = ""
+    optimized_bytes: int = 0
+
+    @property
+    def working_bytes(self) -> int:
+        """Size of whatever `binary_key` points at."""
+        return self.optimized_bytes if self.optimized else self.size_bytes
 
 
 @dataclass

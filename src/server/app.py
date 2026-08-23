@@ -10,20 +10,30 @@ a real client corpus before the triage-and-rewrite questions are settled.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
+from src.binary.keys import BinaryRef
+from src.binary.store import BinStore
 from src.capture import JinaFetcher, add_source
+from src.feed.git_source import GitChangeSource, GitRepoError
+from src.feed.render import to_json
 from src.server.browse import list_sources, load_source
 from src.store import CorpusStore, KeyNotFound
 
 STATIC = Path(__file__).parent / "static"
 
 
-def create_app(store: CorpusStore, label: str = "corpus", writable: bool = False) -> FastAPI:
+def create_app(
+    store: CorpusStore,
+    label: str = "corpus",
+    writable: bool = False,
+    bin_store: BinStore | None = None,
+) -> FastAPI:
     """The sidecar.
 
     `writable` is a SERVER-level decision, not a per-request one. The first
@@ -34,6 +44,15 @@ def create_app(store: CorpusStore, label: str = "corpus", writable: bool = False
     something you pass through deliberately.
     """
     app = FastAPI(title="corpora-builder", docs_url=None, redoc_url=None)
+
+    # One per server. The cache is machine-level and shared across every corpus,
+    # so this is a handle rather than state — see Binary-Ingest-And-Bin-Store.
+    #
+    # Injectable because the default is the REAL machine cache: a test that let
+    # it default read whatever this laptop happened to have downloaded and
+    # reported `present` for a binary it had just evicted. A false green of
+    # exactly the kind this repo keeps finding.
+    bins = bin_store or BinStore(store)
 
     # The Tauri webview talks to this sidecar directly over localhost rather
     # than through a Rust forwarding layer — which is what keeps the Rust side
@@ -79,7 +98,9 @@ def create_app(store: CorpusStore, label: str = "corpus", writable: bool = False
         limit: int = Query(200, ge=1, le=2000),
         offset: int = Query(0, ge=0),
     ) -> dict[str, object]:
-        listing = list_sources(store, prefix=prefix, search=search, limit=limit, offset=offset)
+        listing = list_sources(
+            store, prefix=prefix, search=search, limit=limit, offset=offset, bin_store=bins
+        )
         return {
             "rows": [r.as_dict() for r in listing.rows],
             "total": listing.total,
@@ -94,6 +115,50 @@ def create_app(store: CorpusStore, label: str = "corpus", writable: bool = False
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except KeyNotFound as exc:
             raise HTTPException(status_code=404, detail=f"not found: {path}") from exc
+
+    @app.get("/api/changes")
+    def changes(
+        repo: str = Query(..., description="git repository holding the corpus"),
+        prefix: str = Query("", description="corpus path within that repo"),
+        limit: int = Query(20, ge=1, le=200),
+    ) -> dict[str, object]:
+        """The change feed, as data. Same records `corpora changes` renders.
+
+        Takes a repo path because history lives in git today and the sidecar
+        serves a *store*, which may be a bucket with no history of its own. When
+        the engine moves — Kopia, or our own checkpoints — this argument is what
+        changes, and the response shape does not.
+        """
+        try:
+            page = GitChangeSource(repo).changes(prefix=prefix, limit=limit)
+        except GitRepoError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return json.loads(to_json(page))
+
+    @app.get("/api/binary")
+    def binary(key: str = Query(..., description="a bin/ key")) -> Response:
+        """Fetch a binary's bytes, populating the local cache.
+
+        Allowed on a read-only server. This is the one read that writes, and it
+        writes to a *cache* — populating it from an immutable content-addressed
+        object cannot alter the corpus. Stated in Browse-Corpus Behaviour 12 so
+        nobody later gates it behind `--writable`.
+        """
+        if not key.startswith("bin/") or ".." in key:
+            raise HTTPException(status_code=400, detail="not a bin/ key")
+        try:
+            BinaryRef.from_key(key)  # the key must carry a sha256 to be one of ours
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            data = bins.fetch(BinaryRef.from_key(key))
+        except KeyNotFound as exc:
+            raise HTTPException(status_code=404, detail=f"not in the store: {key}") from exc
+        return Response(
+            content=data,
+            media_type="application/pdf" if key.endswith(".pdf") else "application/octet-stream",
+            headers={"Content-Disposition": f'inline; filename="{key.rsplit("/", 1)[-1]}"'},
+        )
 
     @app.post("/api/capture")
     def capture(

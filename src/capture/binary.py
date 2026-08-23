@@ -47,18 +47,19 @@ def build_binary_asset(
     if ref is not None:
         return BinaryAsset(
             filename=filename,
-            bytes=ref.size,
-            sha256=ref.sha256,
+            content_type="application/pdf" if filename.endswith(".pdf") else "",
+            size_bytes=ref.source_size,
+            sha256=ref.source_sha256,
             downloaded_at=downloaded_at,
             download_status=status,
             binary_key=ref.key,
-            source_sha256=ref.source_sha256,
-            source_bytes=ref.source_size,
             optimized=ref.optimized,
+            optimized_sha256=ref.sha256 if ref.optimized else "",
+            optimized_bytes=ref.size if ref.optimized else 0,
         )
     return BinaryAsset(
         filename=filename,
-        bytes=len(data),
+        size_bytes=len(data),
         sha256=hashlib.sha256(data).hexdigest() if data else "",
         downloaded_at=downloaded_at,
         download_status=status,

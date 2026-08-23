@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from src.binary.store import BinStore
 from src.capture.fetch import prose_excerpt
 from src.model import SourceFile
 from src.store import CorpusStore
@@ -36,6 +37,14 @@ class SourceRow:
     fetched_at: str = ""
     excerpt: str = ""
     url: str = ""
+    #: The content-addressed object this source's binary lives in, when it has
+    #: one. Empty for text-only sources, which are most of them.
+    binary_key: str = ""
+    #: Whether those bytes are on THIS machine. `not_downloaded` is a state with
+    #: an affordance, not an error — see Binary-Ingest-And-Bin-Store Behaviour 8.
+    binary_state: str = ""
+    binary_bytes: int = 0
+    binary_optimized: bool = False
     #: Set when the file could not be parsed. Present in the results regardless.
     error: str = ""
 
@@ -67,12 +76,28 @@ def _domain_of(path: str) -> str:
     return "/".join(parts) or "(root)"
 
 
+def _binary_state(source: SourceFile, bin_store: BinStore | None) -> tuple[str, str, int, bool]:
+    """`(key, state, bytes, optimized)` for a source's binary, if it has one.
+
+    `state` is empty for text-only sources — most of them — and otherwise
+    `present` or `not_downloaded`. Determining it costs a filesystem check
+    against the local cache and never a network call, which is what lets a
+    listing of 858 rows stay fast.
+    """
+    asset = source.binary_asset
+    if asset is None or not asset.binary_key:
+        return "", "", 0, False
+    state = "present" if bin_store and bin_store.is_cached(asset.binary_key) else "not_downloaded"
+    return asset.binary_key, state, asset.working_bytes, asset.optimized
+
+
 def list_sources(
     store: CorpusStore,
     prefix: str = "",
     search: str = "",
     limit: int = 200,
     offset: int = 0,
+    bin_store: BinStore | None = None,
 ) -> Listing:
     """Every source under `prefix`, newest fetch first."""
     keys = [k for k in store.list(prefix) if k.endswith(".md")]
@@ -94,6 +119,7 @@ def list_sources(
                 )
             )
             continue
+        bin_key, bin_state, bin_size, bin_opt = _binary_state(source, bin_store)
         rows.append(
             SourceRow(
                 path=key,
@@ -108,6 +134,10 @@ def list_sources(
                 # screen of bare titles is not worth opening.
                 excerpt=source.excerpt or prose_excerpt(source.body, PREVIEW_CHARS),
                 url=source.url,
+                binary_key=bin_key,
+                binary_state=bin_state,
+                binary_bytes=bin_size,
+                binary_optimized=bin_opt,
             )
         )
 

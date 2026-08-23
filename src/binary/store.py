@@ -149,7 +149,7 @@ class BinStore:
                 outcome=HASH_MISMATCH,
                 detail=f"store has {stat.content_hash[:12]}…, wrapper says {ref.sha256[:12]}…",
             )
-        if stat.size != ref.size:
+        if ref.size and stat.size != ref.size:
             return VerifyResult(
                 key=ref.key,
                 outcome=HASH_MISMATCH,

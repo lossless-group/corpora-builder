@@ -54,7 +54,7 @@ def _full_source() -> SourceFile:
         note="",
         binary_asset=BinaryAsset(
             filename="iea-oes-annual-report-2025.pdf",
-            bytes=4210332,
+            size_bytes=4210332,
             sha256="abc123",
             downloaded_at="2026-06-27T14:32:10Z",
             download_status="ok",

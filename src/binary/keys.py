@@ -69,6 +69,27 @@ class BinaryRef:
     optimized: bool = False
 
     @classmethod
+    def from_key(cls, key: str, size: int = 0) -> BinaryRef:
+        """Rebuild a ref from a key alone.
+
+        Lossless because the key *is* the hash — that is the whole point of
+        content addressing, and it means a caller holding only a key (a URL
+        parameter, a wrapper line) can still verify and evict without first
+        parsing the wrapper it came from. `size` is optional: pass it when known
+        and the size check applies too, omit it and only the hash is checked.
+        """
+        digest = key.rsplit("/", 1)[-1].split(".")[0]
+        if len(digest) != 64:
+            raise ValueError(f"key does not carry a sha256: {key}")
+        return cls(
+            key=key,
+            sha256=digest,
+            size=size,
+            source_sha256="",
+            source_size=0,
+        )
+
+    @classmethod
     def verbatim(cls, data: bytes, ext: str = "") -> BinaryRef:
         """Stored exactly as received — no optimizer ran, or it was rejected."""
         digest = sha256_of(data)

@@ -7,7 +7,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5 (1M context)
-semantic_version: 0.0.0.1
+semantic_version: 0.0.1.0
 status: Draft
 spec_reference: "[[../plans/Corpora-Builder-MVP-R2-Native-With-Checkpoint-History]] — Phase 7, pulled forward"
 tags:
@@ -65,6 +65,22 @@ config change when wanted). Tauri packaging.
 7. The server writes nothing, ever. It opens the store read-only in the sense
    that no handler calls `write` or `delete`.
 
+10. **A row says whether its binary is here.** A source with a `binary_key`
+    carries it, plus whether the bytes are on this machine. Absent is a state —
+    `not_downloaded` — with everything needed to get it, never an error and never
+    a silent fetch (`Binary-Ingest-And-Bin-Store` Behaviour 8).
+
+11. **The change feed is a read endpoint like any other.** `/api/changes`
+    returns the structured record from [[Corpus-Change-Feed]], so the screen and
+    the CLI render the same data through different surfaces rather than growing
+    two notions of what changed.
+
+12. **Fetching a binary is the one read that writes — to the cache, never the
+    store.** It is allowed on a read-only server, because populating a local
+    cache from an immutable object cannot alter the corpus. This is the
+    exception that proves the rule in Behaviour 7, and it is stated so nobody
+    later "fixes" it by gating it behind `--writable`.
+
 ## Tests
 
 | ID | Given / When / Then |
@@ -77,6 +93,10 @@ config change when wanted). Tauri packaging.
 | `BROWSE-06` | Given a path, when one source is loaded, then its raw text is returned byte-identical to what is stored |
 | `BROWSE-07` | Given a request for a path outside the corpus, when it is loaded, then it is refused rather than served |
 | `BROWSE-08` | Given a source with no `excerpt` in its frontmatter, when it is listed, then the excerpt falls back to the first real prose in its body, skipping navigation chrome |
+| `BROWSE-10` | Given a source whose wrapper carries a `binary_key`, when it is listed, then the row reports the key and whether the bytes are present on this machine |
+| `BROWSE-11` | Given a corpus with history, when `/api/changes` is called, then it returns the same records `corpora changes` renders, newest first, with truncation reported |
+| `BROWSE-12` | Given a read-only server and an uncached binary, when it is fetched, then the bytes are returned, the cache is populated, and no store write or delete occurs |
+| `BROWSE-13` | Given a request for a binary key outside `bin/`, when it is fetched, then it is refused rather than served |
 | `BROWSE-09` | Given both the `live/<type>/<slug>/sources/` layout and reach-edu's pre-existing `funders/<slug>/` and `strategies/<slug>/sources/`, when domains are derived, then each reads as an operator would name it |
 
 ## Acceptance
