@@ -58,6 +58,7 @@ export interface Meta {
   total: number;
   domains: string[];
   focuses: FocusDef[];
+  workspace: WorkspaceInfo;
   writable: boolean;
 }
 
@@ -95,6 +96,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 /** A domain's own declaration, read from its index.md. The `type` is open —
  *  `strategy`, `topic`, `thesis`, whatever a client's corpus declares. */
+export interface WorkspaceInfo {
+  slug: string;
+  display_name: string;
+  bucket: string;
+}
+
 export interface FocusDef {
   value: string;
   label: string;

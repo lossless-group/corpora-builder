@@ -30,10 +30,15 @@ def run() -> None:
     env = load_env()
     local = os.environ.get("CORPORA_LOCAL", "")
     store, workspace = build_store(env, local)
-    label = local or f"{workspace.display_name} ({workspace.bucket})"
+    label = local or workspace.display_name
 
     uvicorn.run(
-        create_app(store, label, writable=os.environ.get("CORPORA_WRITABLE") == "1"),
+        create_app(
+            store,
+            label,
+            writable=os.environ.get("CORPORA_WRITABLE") == "1",
+            workspace=workspace,
+        ),
         host="127.0.0.1",
         port=int(os.environ.get("CORPORA_PORT", "8787")),
         log_level="warning",

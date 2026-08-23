@@ -49,7 +49,7 @@ def build_store(env: dict[str, str], local: str = "") -> tuple[CorpusStore, Work
     """
     workspace = StaticWorkspaceResolver(
         slug=env.get("CORPORA_WORKSPACE", "local"),
-        display_name=env.get("CORPORA_WORKSPACE_NAME", env.get("CORPORA_WORKSPACE", "local")),
+        display_name=env.get("CORPORA_WORKSPACE_NAME", ""),
         bucket=env.get("CORPORA_R2_BUCKET") or None,
         prefix=env.get("CORPORA_R2_PREFIX", ""),
     ).resolve()
@@ -232,7 +232,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     from src.server.app import create_app
 
     store, workspace = build_store(load_env(), args.local)
-    label = args.local or f"{workspace.display_name} ({workspace.bucket})"
+    label = args.local or workspace.display_name
 
     console.print(f"[green]corpora[/] · {label}")
     console.print(f"  [bold]http://{args.host}:{args.port}[/]\n")
@@ -242,7 +242,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         console.print("[dim]  read-only — pass --writable to enable capture[/]\n")
 
     uvicorn.run(
-        create_app(store, label, writable=args.writable),
+        create_app(store, label, writable=args.writable, workspace=workspace),
         host=args.host,
         port=args.port,
         log_level="warning",

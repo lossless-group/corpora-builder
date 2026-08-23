@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 
-from src.identity.base import Workspace, WorkspaceResolver, default_bucket_name
+from src.identity.base import Workspace, WorkspaceResolver, default_bucket_name, humanise
 
 
 class StaticWorkspaceResolver(WorkspaceResolver):
@@ -23,12 +23,16 @@ class StaticWorkspaceResolver(WorkspaceResolver):
     def __init__(
         self,
         slug: str,
-        display_name: str,
+        display_name: str = "",
         bucket: str | None = None,
         prefix: str = "",
     ) -> None:
         self.slug = slug
-        self.display_name = display_name
+        # Derived here rather than in `from_env`, because `from_env` is not the
+        # path that runs: `build_store` constructs this directly, which is how
+        # the first attempt at a readable header changed nothing. A default
+        # belongs to construction, not to one factory.
+        self.display_name = display_name or humanise(slug)
         self.bucket = bucket or default_bucket_name(slug)
         self.prefix = prefix
 
@@ -48,7 +52,8 @@ class StaticWorkspaceResolver(WorkspaceResolver):
             raise RuntimeError("CORPORA_WORKSPACE is not set")
         return cls(
             slug=slug,
-            display_name=os.environ.get("CORPORA_WORKSPACE_NAME", slug),
+            # Configured name wins; the constructor derives one when it is blank.
+            display_name=os.environ.get("CORPORA_WORKSPACE_NAME", ""),
             bucket=os.environ.get("CORPORA_R2_BUCKET") or None,
             prefix=os.environ.get("CORPORA_R2_PREFIX", ""),
         )

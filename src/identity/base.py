@@ -60,6 +60,20 @@ class WorkspaceResolver(ABC):
         """Return the active workspace."""
 
 
+def humanise(slug: str) -> str:
+    """A readable name for a slug, when nobody has configured one.
+
+    `reach-edu` → `Reach Edu`. This exists because `display_name` defaulted to
+    the slug, which is how the header came to read `reach-edu (reach-edu)` — a
+    slug printed twice with a bucket name leaking into the product.
+
+    A guess, deliberately, and beaten by `CORPORA_WORKSPACE_NAME` whenever it is
+    set: no rule turns `ncad-forge` into `NCAD-Forge`, and pretending otherwise
+    would put a wrong name in front of a client rather than an approximate one.
+    """
+    return " ".join(word.capitalize() for word in slug.replace("_", "-").split("-") if word)
+
+
 def default_bucket_name(slug: str) -> str:
     """The bucket a NEWLY PROVISIONED workspace should get.
 

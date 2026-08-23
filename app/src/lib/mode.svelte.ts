@@ -15,15 +15,15 @@
  * Tailwind `dark` class to sync (this app has no Tailwind) and no `mode-change`
  * event, because nothing here listens for one. Add either when something needs it.
  */
-export const MODES = ['light', 'dark', 'vibrant'] as const;
-export type Mode = (typeof MODES)[number];
+import { MODES, isMode, modeTooltip, nextMode, type Mode } from './modes';
+export { MODES, modeTooltip, nextMode, type Mode };
 
 const KEY = 'mode';
 
 function stored(): Mode {
   if (typeof localStorage === 'undefined') return 'dark';
   const m = localStorage.getItem(KEY);
-  return (MODES as readonly string[]).includes(m ?? '') ? (m as Mode) : 'dark';
+  return isMode(m) ? m : 'dark';
 }
 
 class ModeState {
@@ -41,7 +41,11 @@ class ModeState {
 
   /** Cycles rather than toggles — a two-state toggle cannot reach a third mode. */
   cycle() {
-    this.apply(MODES[(MODES.indexOf(this.current) + 1) % MODES.length]);
+    this.apply(nextMode(this.current));
+  }
+
+  get tooltip(): string {
+    return modeTooltip(this.current);
   }
 }
 

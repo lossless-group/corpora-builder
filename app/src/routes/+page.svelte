@@ -2,6 +2,8 @@
   import { mode } from '$lib/mode.svelte';
   import DomainCombo from '$lib/components/DomainCombo.svelte';
   import CorpusTree from '$lib/components/CorpusTree.svelte';
+  import WorkspaceMenu from '$lib/components/WorkspaceMenu.svelte';
+  import ModeToggle from '$lib/components/ModeToggle.svelte';
   import type { TreeNode, FocusDef } from '$lib/api';
   import { Latest } from '$lib/latest';
   import { SvelteSet } from 'svelte/reactivity';
@@ -217,8 +219,7 @@
 
 <header>
   <div class="bar">
-    <h1>corpora <span>{meta?.label ?? ''}</span></h1>
-    <button class="mode" onclick={() => mode.cycle()} title="Cycle light / dark / vibrant">{mode.current}</button>
+    <h1>corpora</h1>
     <input bind:value={search} oninput={debounced} type="search" placeholder="Search title, excerpt, or path…" />
     <div class="dom">
       <DomainCombo
@@ -228,6 +229,12 @@
         placeholder="All domains — type to filter…"
         onchange={load}
       />
+    </div>
+
+    <!-- Top right, as in augment-it's shell: which corpus, then the mode. -->
+    <div class="chrome">
+      <WorkspaceMenu workspace={meta?.workspace ?? null} writable={meta?.writable ?? false} />
+      <ModeToggle />
     </div>
   </div>
 
@@ -436,6 +443,9 @@
 
   header { position: sticky; top: 0; z-index: 5; background: var(--color-surface); border-bottom: 1px solid var(--color-border); padding: 8px 16px; }
   .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  /* Pushed right and kept together, so the two chrome controls read as one
+     cluster rather than as the tail of the search row. */
+  .chrome { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
   .capture { margin-top: 8px; }
   h1 { font-size: 13px; margin: 0; font-weight: 700; letter-spacing: 0; }
   h1 span { color: var(--color-text-muted); font-weight: 400; }
@@ -509,7 +519,6 @@
   .chip { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); }
   .chip.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 
-  .mode { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; color: var(--color-text-muted); min-width: 68px; }
   .backdrop { position: fixed; inset: 0; background: var(--fx-scrim); display: grid; place-items: center; padding: 24px; }
   .modal { background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-lg); max-width: min(880px, 94vw); width: 100%; }
   .mhead { border-bottom: 1px solid var(--color-border); padding: 9px 13px; }

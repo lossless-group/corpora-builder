@@ -22,6 +22,7 @@ from src.binary.store import BinStore
 from src.capture import JinaFetcher, add_source
 from src.feed.git_source import GitChangeSource, GitRepoError
 from src.feed.render import to_json
+from src.identity import Workspace
 from src.server.browse import list_domain_defs, list_domains, list_sources, load_source
 from src.server.tree import build_tree
 from src.store import CorpusStore, KeyNotFound
@@ -34,6 +35,7 @@ def create_app(
     label: str = "corpus",
     writable: bool = False,
     bin_store: BinStore | None = None,
+    workspace: Workspace | None = None,
 ) -> FastAPI:
     """The sidecar.
 
@@ -87,6 +89,16 @@ def create_app(
         total, domains = list_domains(store)
         return {
             "label": label,
+            # Fields, not a rendered string. `label` used to be
+            # "reach-edu (reach-edu)" — a formatting decision made on the
+            # server, which the client could only print. The header wants the
+            # name in the trigger and the slug in the dropdown, and only the
+            # client knows that.
+            "workspace": {
+                "slug": workspace.slug if workspace else label,
+                "display_name": workspace.display_name if workspace else label,
+                "bucket": workspace.bucket if workspace else "",
+            },
             "total": total,
             "domains": domains,
             # Read from each domain's own index.md — nine reads, not 845 —
