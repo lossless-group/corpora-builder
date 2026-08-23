@@ -256,6 +256,45 @@ def cmd_reindex(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backfill_urls(args: argparse.Namespace) -> int:
+    """`corpora backfill-urls` — give every source a stable identity.
+
+    **Dry run unless `--apply`.** It rewrites files in a corpus that may belong
+    to a client, and the value of the operation is entirely in it being boring:
+    a one-line insertion under `url:`, nothing else touched.
+    """
+    from src.model.backfill import apply as apply_backfill
+    from src.model.backfill import plan as plan_backfill
+    from src.server.browse import source_keys
+
+    store, workspace = build_store(load_env(), args.local)
+
+    with console.status("reading the corpus"):
+        keys = source_keys(store, args.prefix)
+        result = plan_backfill(store, keys)
+
+    console.print(f"[green]{workspace.display_name}[/] · {len(keys)} source(s)")
+    console.print(f"  would write   {len(result.writes)}")
+    for reason, count in sorted(result.reasons().items(), key=lambda kv: -kv[1]):
+        console.print(f"  [dim]skipped[/]       {count:>4}  {reason}")
+
+    if not args.apply:
+        console.print("\n[dim]Dry run. Re-run with --apply to write.[/]")
+        for entry in result.writes[: args.sample]:
+            console.print(f"  [dim]{entry.key}[/]")
+            console.print(f"    -> normalized_url: {entry.normalized}")
+        return 0
+
+    if not result.writes:
+        console.print("\n[dim]Nothing to do.[/]")
+        return 0
+
+    with console.status(f"writing {len(result.writes)} file(s)"):
+        changed = apply_backfill(store, result)
+    console.print(f"\n[green]wrote[/] {changed} file(s)")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -333,6 +372,16 @@ def main(argv: list[str] | None = None) -> int:
         help="write the manifest only, skipping the Pagefind bundle",
     )
     reindex_cmd.set_defaults(func=cmd_reindex)
+
+    backfill = sub.add_parser("backfill-urls", help="add normalized_url where it is missing")
+    backfill.add_argument("--prefix", default="", help="limit to a subtree")
+    backfill.add_argument(
+        "--apply",
+        action="store_true",
+        help="actually write (default is a dry run — this edits a client corpus)",
+    )
+    backfill.add_argument("--sample", type=int, default=5, help="how many examples to print")
+    backfill.set_defaults(func=cmd_backfill_urls)
 
     show = sub.add_parser("show", help="print one source file")
     show.add_argument("path")
