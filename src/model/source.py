@@ -142,11 +142,32 @@ class BinaryAsset:
     #: Present only when `optimized` is true — the stored artifact.
     optimized_sha256: str = ""
     optimized_bytes: int = 0
+    #: An OLDER spelling, found in the wild. Uploaded PDFs were recorded with
+    #: `bytes` / `original_bytes` / `compressed` by an earlier pipeline that
+    #: already did its own compression. Modelled rather than migrated, because
+    #: rewriting a client's frontmatter to tidy a synonym is exactly the kind of
+    #: change `src/binary/pointer.py` exists to refuse.
+    bytes: int = 0
+    original_bytes: int = 0
+    compressed: bool = False
+    source: str = ""
 
     @property
     def working_bytes(self) -> int:
-        """Size of whatever `binary_key` points at."""
-        return self.optimized_bytes if self.optimized else self.size_bytes
+        """Size of whatever `binary_key` points at, across every spelling.
+
+        Three shapes exist in the reach-edu corpus and the reader should not
+        have to know which one a given file uses.
+        """
+        if self.optimized and self.optimized_bytes:
+            return self.optimized_bytes
+        return self.size_bytes or self.bytes
+
+    @property
+    def was_compressed(self) -> bool:
+        """Whether these bytes are smaller than what the publisher served —
+        by our optimizer or by whatever produced `compressed: true`."""
+        return self.optimized or self.compressed
 
 
 @dataclass

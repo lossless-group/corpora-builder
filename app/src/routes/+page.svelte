@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type CaptureResult, type Meta, type SourceRow } from '$lib/api';
+  import { api, type CaptureResult, type Change, type Meta, type SourceRow } from '$lib/api';
 
   let meta = $state<Meta | null>(null);
   let rows = $state<SourceRow[]>([]);
@@ -16,6 +16,13 @@
   let capturing = $state(false);
   let captured = $state<CaptureResult | null>(null);
   let captureError = $state('');
+
+  let tab = $state<'sources' | 'changes'>('sources');
+  let changes = $state<Change[]>([]);
+  let changesTruncated = $state(false);
+  let changesRepo = $state('');
+  let changesError = $state('');
+  let loadingChanges = $state(false);
 
   let viewing = $state<SourceRow | null>(null);
   let viewingText = $state('');
@@ -39,6 +46,22 @@
     booting = false;
     bootError = 'The backend did not start. Check that `uv sync --extra dev` has been run.';
   });
+
+  async function loadChanges() {
+    if (!changesRepo.trim()) return;
+    loadingChanges = true;
+    changesError = '';
+    try {
+      const page = await api.changes(changesRepo.trim(), 'corpus', 25);
+      changes = page.changes;
+      changesTruncated = page.truncated;
+    } catch (e) {
+      changesError = String(e instanceof Error ? e.message : e);
+      changes = [];
+    } finally {
+      loadingChanges = false;
+    }
+  }
 
   async function load() {
     const data = await api.sources(prefix, search);
@@ -77,6 +100,11 @@
     } catch (err) {
       viewingText = `Could not load: ${err}`;
     }
+  }
+
+  function kb(n: number): string {
+    if (!n) return '';
+    return n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
   }
 
   function chips(row: SourceRow): [string, boolean][] {
@@ -131,6 +159,55 @@
     {/if}
     {#if captureError}<p class="note err">{captureError}</p>{/if}
 
+    <nav class="tabs">
+      <button class:on={tab === 'sources'} onclick={() => (tab = 'sources')}>Sources</button>
+      <button class:on={tab === 'changes'} onclick={() => (tab = 'changes')}>What changed</button>
+    </nav>
+
+    {#if tab === 'changes'}
+      <form class="repo" onsubmit={(e) => { e.preventDefault(); loadChanges(); }}>
+        <input
+          bind:value={changesRepo}
+          placeholder="path to the git repo holding this corpus"
+          spellcheck="false"
+        />
+        <button type="submit" disabled={loadingChanges || !changesRepo.trim()}>
+          {loadingChanges ? 'Reading…' : 'Show'}
+        </button>
+      </form>
+      <p class="note">
+        History lives in git today. When it moves — a Kopia repository, our own
+        checkpoints — this field is what changes, not what you see below.
+      </p>
+      {#if changesError}<p class="note err">{changesError}</p>{/if}
+
+      <ul class="feed">
+        {#each changes as c (c.id)}
+          <li>
+            <div class="when">{c.when.slice(0, 10)} · {c.who}</div>
+            <!-- No sentence means no reason line. Never a generated one: an
+                 absent reason renders as absent, which is honest and is the only
+                 thing that creates pressure to write a real one. -->
+            {#if c.sentence && c.sentence.trim()}
+              <div class="why">{c.sentence}</div>
+            {/if}
+            <div class="counts">
+              {#if c.counts.added}<span>{c.counts.added} added</span>{/if}
+              {#if c.counts.changed}<span>{c.counts.changed} updated</span>{/if}
+              {#if c.counts.removed}<span>{c.counts.removed} removed</span>{/if}
+              {#if c.counts.renamed}<span>{c.counts.renamed} moved</span>{/if}
+              {#if c.bytes}<span class="dim">{kb(c.bytes)}</span>{/if}
+            </div>
+          </li>
+        {:else}
+          {#if !loadingChanges && changesRepo}<li class="note">No changes found.</li>{/if}
+        {/each}
+      </ul>
+      {#if changesTruncated}
+        <p class="note">Showing the {changes.length} most recent; there are more.</p>
+      {/if}
+    {:else}
+
     <p class="count">{total} source{total === 1 ? '' : 's'}{rows.length < total ? ` · showing ${rows.length}` : ''}</p>
 
     <ul>
@@ -142,13 +219,31 @@
             {#if row.excerpt}<div class="e">{row.excerpt}</div>{/if}
             <div class="chips">
               {#each chips(row) as [text, on]}<span class="chip" class:on>{text}</span>{/each}
+              {#if row.binary_key}
+                <span class="chip pdf" class:dim={row.binary_state === 'not_downloaded'}>
+                  PDF {kb(row.binary_bytes)}{row.binary_optimized ? ' · optimized' : ''}
+                </span>
+              {/if}
             </div>
           </button>
+          {#if row.binary_key}
+            <!-- A plain link, deliberately. The binary is bytes the browser can
+                 open; routing it through JS would add a copy and lose the
+                 viewer the reader already has. -->
+            <a
+              class="getpdf"
+              href={api.binaryUrl(row.binary_key)}
+              target="_blank"
+              rel="noreferrer"
+              title={row.binary_key}
+            >{row.binary_state === 'present' ? 'Open PDF' : 'Download PDF'}</a>
+          {/if}
         </li>
       {:else}
         <li class="note">Nothing matches.</li>
       {/each}
     </ul>
+    {/if}
   {/if}
 </main>
 
@@ -200,6 +295,41 @@
   li.err .t { color: var(--warn); }
   .x { color: var(--ink-dim); font-size: 12.5px; margin-bottom: 5px; word-break: break-all; }
   .e { color: var(--ink-dim); font-size: 13.5px; }
+  .tabs { display: flex; gap: 4px; margin: 0 0 var(--space-md); }
+  .tabs button {
+    font: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-dim);
+    border-radius: var(--radius-pill);
+  }
+  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+
+  .repo { display: flex; gap: 8px; margin-bottom: var(--space-sm); }
+  .repo input {
+    flex: 1; font: inherit; font-size: 13px; font-family: var(--font-mono);
+    padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--radius-md);
+    background: var(--surface); color: var(--ink);
+  }
+  .repo button {
+    font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
+    border: 0; border-radius: var(--radius-md); background: var(--accent); color: var(--accent-ink);
+  }
+  .repo button:disabled { opacity: .5; cursor: default; }
+
+  .feed { list-style: none; padding: 0; margin: var(--space-md) 0 0; }
+  .feed li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .feed .when { font-size: 12px; color: var(--ink-dim); font-family: var(--font-mono); }
+  .feed .why { margin: 4px 0 6px; font-size: 14.5px; color: var(--ink); }
+  .feed .counts { display: flex; gap: 10px; font-size: 12px; color: var(--ink-dim); }
+  .feed .counts .dim { opacity: .7; }
+
+  .getpdf {
+    display: inline-block; margin: 2px 0 10px; font-size: 12px;
+    color: var(--accent); text-decoration: none;
+  }
+  .getpdf:hover { text-decoration: underline; }
+  .chip.pdf { background: var(--accent); color: var(--accent-ink); }
+  .chip.pdf.dim { background: var(--chip-bg); color: var(--ink-dim); }
+
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .chip { font-size: 11.5px; padding: 2px 8px; border-radius: var(--radius-pill); background: var(--chip-bg); color: var(--ink-dim); }
   .chip.on { background: var(--accent); color: var(--accent-ink); }

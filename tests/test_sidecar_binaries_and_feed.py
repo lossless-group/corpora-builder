@@ -161,3 +161,31 @@ def test_fetching_a_binary_works_on_a_read_only_server_and_writes_only_the_cache
 def test_a_key_outside_bin_is_refused(wired: tuple[TestClient, BinStore, str], key: str) -> None:
     client, _, _ = wired
     assert client.get("/api/binary", params={"key": key}).status_code == 400
+
+
+@pytest.mark.spec("BROWSE-10")
+def test_an_older_binary_asset_spelling_still_reports_a_size(tmp_path: Path) -> None:
+    """reach-edu carries at least three `binary_asset` shapes. Uploaded PDFs use
+    `bytes`/`original_bytes`/`compressed`; fetched ones use `size_bytes`. A row
+    that renders 0 B because it met the wrong synonym is a bug the reader sees."""
+    store = LocalFsStore(tmp_path / "corpus")
+    bins = BinStore(store, cache_dir=tmp_path / "cache")
+    ref = ingest_binary(bins, PDF, ".pdf", optimize=False).ref
+    store.write(
+        "live/x/sources/old.md",
+        (
+            '---\ntitle: "Older Shape"\nbinary_asset:\n'
+            '  filename: "a.pdf"\n'
+            "  bytes: 4251753\n"
+            "  original_bytes: 6882194\n"
+            "  compressed: true\n"
+            f"  binary_key: {ref.key}\n"
+            "  optimized: false\n---\n\nBody.\n"
+        ).encode(),
+    )
+    client = TestClient(create_app(store, "t", bin_store=bins))
+
+    row = client.get("/api/sources").json()["rows"][0]
+
+    assert row["binary_bytes"] == 4251753  # not 0
+    assert row["binary_optimized"] is True  # `compressed` counts

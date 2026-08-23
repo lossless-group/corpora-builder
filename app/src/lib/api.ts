@@ -19,6 +19,38 @@ export interface SourceRow {
   excerpt: string;
   url: string;
   error: string;
+  /** The content-addressed object this source's PDF lives in. Empty for
+   *  text-only sources, which are most of them. */
+  binary_key: string;
+  /** '' | 'present' | 'not_downloaded'. Absent is a state with an affordance,
+   *  never an error and never a silent fetch. */
+  binary_state: string;
+  binary_bytes: number;
+  binary_optimized: boolean;
+}
+
+/** One unit of work against the corpus. Engine-agnostic by design — git today,
+ *  possibly a Kopia repository later, without this shape changing. */
+export interface Change {
+  id: string;
+  when: string;
+  who: string;
+  subject: string;
+  verb: string | null;
+  scope: string | null;
+  sentence: string;
+  added: string[];
+  changed: string[];
+  removed: string[];
+  renamed: { old: string; new: string }[];
+  counts: { added: number; changed: number; removed: number; renamed: number };
+  bytes: number;
+}
+
+export interface ChangePage {
+  truncated: boolean;
+  count: number;
+  changes: Change[];
 }
 
 export interface Meta {
@@ -69,5 +101,13 @@ export const api = {
     }),
   source: (path: string) => get<string>('/api/source', { path }),
   capture: (url: string, domain: string, full: boolean) =>
-    post<CaptureResult>('/api/capture', { url, domain: domain || null, full })
+    post<CaptureResult>('/api/capture', { url, domain: domain || null, full }),
+
+  changes: (repo: string, prefix = '', limit = 20) =>
+    get<ChangePage>('/api/changes', { repo, prefix, limit: String(limit) }),
+
+  /** The URL a binary can be opened or downloaded from. Not a `get` because the
+   *  browser fetches it directly — handing an <a href> to the viewer is the
+   *  whole point, and streaming it through JS would only add a copy. */
+  binaryUrl: (key: string) => `${BASE}/api/binary?key=${encodeURIComponent(key)}`
 };

@@ -88,7 +88,7 @@ def _binary_state(source: SourceFile, bin_store: BinStore | None) -> tuple[str, 
     if asset is None or not asset.binary_key:
         return "", "", 0, False
     state = "present" if bin_store and bin_store.is_cached(asset.binary_key) else "not_downloaded"
-    return asset.binary_key, state, asset.working_bytes, asset.optimized
+    return asset.binary_key, state, asset.working_bytes, asset.was_compressed
 
 
 def list_sources(
