@@ -53,26 +53,30 @@ if (initErrors?.length) {
 /**
  * What Pagefind gets to read for a source.
  *
- * The `domains:` tags are here AS WELL AS in the filters, deliberately. As
- * filters they narrow exactly and report counts; as text their words stay
- * searchable, which is what keeps the `FOCUS-01` promise alive — typing
- * "literacy" has to reach a source tagged `strategy:adult-literacy-numeracy`
- * even though neither its title nor its excerpt says the word.
+ * **Pagefind excerpts from the same text it matches on, so this is not just an
+ * index — it is what a reader ends up looking at.** A first version also fed in
+ * the corpus key, raw and de-punctuated, so that typing part of a path would
+ * rank a source. It worked, and every result then displayed
+ * `live strategies adult literacy numeracy sources 2026 05 06 source 089.md`
+ * as though it were prose. Content indexed for MATCHING has to be content worth
+ * READING, or the excerpt stops being one.
  *
- * The path is included for the same reason: the manifest's own search matches
- * it, and a bundle that quietly matched less would be a downgrade wearing a
- * feature's clothes.
+ * So the key is gone from here — it lives in `meta.path`, which is what the app
+ * joins on — and the loss is small, because a source filename in this corpus is
+ * a slug of its own title and the title is indexed.
+ *
+ * The `domains:` tags stay, as WORDS rather than as raw tags: `strategy:
+ * adult-literacy-numeracy` becomes "adult literacy numeracy". As filters they
+ * narrow exactly and report counts; as words they keep the `FOCUS-01` promise
+ * alive — typing "literacy" has to reach a source carrying that tag even when
+ * neither its title nor its excerpt says the word — and if they do surface in
+ * an excerpt they read as English instead of as a slug.
  */
 function content(entry) {
-  return [
-    entry.title ?? '',
-    entry.excerpt ?? '',
-    (entry.domains ?? []).join(' '),
-    entry.key.replace(/[/_-]/g, ' '),
-    entry.key
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const tagWords = (entry.domains ?? [])
+    .map((d) => d.split(':').pop().replace(/[-_]/g, ' '))
+    .join(' ');
+  return [entry.title ?? '', entry.excerpt ?? '', tagWords].filter(Boolean).join('\n');
 }
 
 const errors = [];

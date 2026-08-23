@@ -5,6 +5,7 @@
   import WorkspaceMenu from '$lib/components/WorkspaceMenu.svelte';
   import ModeToggle from '$lib/components/ModeToggle.svelte';
   import CorporaMark from '$lib/components/CorporaMark.svelte';
+  import SearchPanel from '$lib/components/SearchPanel.svelte';
   import type { TreeNode, FocusDef } from '$lib/api';
   import { Latest } from '$lib/latest';
   import { SvelteSet } from 'svelte/reactivity';
@@ -22,6 +23,27 @@
   // the rows rather than on them: it belongs to a QUERY, not to a source, and
   // putting it on the row would leave the last search's highlighting behind.
   let marks = $state(new Map<string, string>());
+
+  // The results panel under the box. `context-vigilance-kit/splash` puts search
+  // results there rather than only filtering a list further down, and the
+  // difference is which question you are asking: the list is "show me
+  // everything matching, so I can work through it"; the panel is "did the thing
+  // I am thinking of come back", answered without leaving the input.
+  let panelOpen = $state(false);
+  let searchBox = $state<HTMLDivElement | undefined>(undefined);
+
+  function closePanel() {
+    panelOpen = false;
+  }
+
+  function onDocPointer(ev: PointerEvent) {
+    if (panelOpen && searchBox && !searchBox.contains(ev.target as Node)) panelOpen = false;
+  }
+
+  $effect(() => {
+    document.addEventListener('pointerdown', onDocPointer);
+    return () => document.removeEventListener('pointerdown', onDocPointer);
+  });
 
   let meta = $state<Meta | null>(null);
   let rows = $state<SourceRow[]>([]);
@@ -318,6 +340,7 @@
 
   function debounced() {
     clearTimeout(timer);
+    panelOpen = search.trim().length > 0;
     shown = RANKED_PAGE; // a new query starts at the top again
     timer = setTimeout(
       () => (ranked ? applySearch() : load()),
@@ -344,6 +367,7 @@
   }
 
   async function view(row: SourceRow) {
+    panelOpen = false;
     viewing = row;
     viewingText = 'Loading…';
     try {
@@ -374,14 +398,28 @@
     <!-- The mark stands in for the wordmark; the name stays as the accessible
          label, so a screen reader still hears "corpora". -->
     <h1><CorporaMark size={26} /></h1>
-    <input
-      bind:value={search}
-      oninput={debounced}
-      type="search"
-      placeholder={ranked
-        ? 'Search — ranked, any word order…'
-        : 'Search title, excerpt, or path…'}
-    />
+    <div class="searchbox" bind:this={searchBox}>
+      <input
+        bind:value={search}
+        oninput={debounced}
+        onfocus={() => (panelOpen = search.trim().length > 0)}
+        type="search"
+        placeholder={ranked
+          ? 'Search — ranked, any word order…'
+          : 'Search title, excerpt, or path…'}
+      />
+      {#if panelOpen && search.trim()}
+        <SearchPanel
+          {rows}
+          {marks}
+          {total}
+          ranked={!!ranked}
+          {tagLabel}
+          onpick={view}
+          onclose={closePanel}
+        />
+      {/if}
+    </div>
     <div class="dom">
       <DomainCombo
         bind:value={domainFilter}
@@ -744,6 +782,9 @@
   .chip { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); border: 1px solid var(--color-border); background: var(--color-surface-raised); color: var(--color-text-muted); }
   .chip.on { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
 
+  /* The panel anchors to this, so it has to establish the containing block. */
+  .searchbox { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+  .searchbox input { width: 100%; }
   .more { margin: 12px 0 0; text-align: center; }
   .tags { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 11px 8px; }
   .tag {

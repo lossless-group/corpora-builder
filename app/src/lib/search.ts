@@ -241,7 +241,10 @@ export async function loadBundle(base: string, fingerprint: string): Promise<Bun
   const root = base.endsWith('/') ? base : `${base}/`;
   try {
     const api = (await import(/* @vite-ignore */ `${root}pagefind.js`)) as unknown as PagefindApi;
-    await api.options({ basePath: root });
+    // 24 words, matching what the splash asks PagefindUI for. The default runs
+    // long enough to wrap to four lines in a dropdown, which turns a preview
+    // into a wall.
+    await api.options({ basePath: root, excerptLength: 24 });
     return { api, fingerprint };
   } catch {
     return null;

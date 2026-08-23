@@ -37,31 +37,31 @@ const ENTRIES = [
   {
     key: 'live/strategies/workforce-development/sources/2026-01-01_a.md',
     title: 'Apprenticeship Report',
-    excerpt: 'Rural counties expanded placements sharply after the state funded a new program.',
+    excerpt: 'Rural counties expanded placements sharply after the state funded a new program. Filed in the corpus.',
     domains: ['strategy:workforce-development']
   },
   {
     key: 'live/strategies/workforce-development/sources/2026-01-02_b.md',
     title: 'Skills Gap Study',
-    excerpt: 'The gap between employer demand and worker credentials across manufacturing.',
+    excerpt: 'The gap between employer demand and worker credentials across manufacturing. Filed in the corpus.',
     domains: ['strategy:workforce-development']
   },
   {
     key: 'live/strategies/adult-literacy-numeracy/sources/2026-02-01_c.md',
     title: 'Reading Levels',
-    excerpt: 'Adult reading proficiency measured across three cohorts.',
+    excerpt: 'Adult reading proficiency measured across three cohorts. Filed in the corpus.',
     domains: ['strategy:adult-literacy-numeracy']
   },
   {
     key: 'live/funders/gates/2026-09-01_d.md',
     title: 'Grant Announcement',
-    excerpt: 'The foundation announced apprenticeship pathways for rural counties.',
+    excerpt: 'The foundation announced apprenticeship pathways for rural counties. Filed in the corpus.',
     domains: []
   },
   {
     key: 'live/funders/gates/2026-01-05_x.md',
     title: 'Cross-Tagged Brief',
-    excerpt: 'A short brief on credential stacking and employer partnerships.',
+    excerpt: 'A short brief on credential stacking and employer partnerships. Filed in the corpus.',
     domains: ['strategy:adult-literacy-numeracy']
   }
 ];
@@ -239,15 +239,15 @@ test('SEARCH-12 a page of results costs a fetch per row shown, not per match', a
   // The regression this exists to prevent, measured before it was fixed: this
   // resolved every match, which was 615 fetches and 821ms for ONE query against
   // local files. Over HTTP to the sidecar it was the reason search felt slow.
-  // Every key begins `live/`, and the builder indexes the key — so this is the
-  // one query guaranteed to match the whole fixture, which is what makes
-  // "fetches did not scale with matches" a real claim.
-  const all = await ranked.page('live', '', 1000);
+  // A word every entry's prose carries — the corpus key is deliberately NOT
+  // indexed, because Pagefind excerpts from what it matches on and a path
+  // rendered as prose is not a preview. So the shared token has to be real text.
+  const all = await ranked.page('corpus', '', 1000);
   assert.ok(all.total >= 4, `the query must match most of the fixture; matched ${all.total}`);
 
-  await ranked.page('live', '', 2); // warm the shared index/meta chunks
+  await ranked.page('corpus', '', 2); // warm the shared index/meta chunks
   fetches = 0;
-  const page = await ranked.page('live', '', 2);
+  const page = await ranked.page('corpus', '', 2);
 
   assert.equal(page.hits.length, 2, 'only the page is resolved');
   assert.equal(page.total, all.total, '...but the count is still every match');

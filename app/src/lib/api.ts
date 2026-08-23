@@ -6,7 +6,17 @@
  * `get` or `post` against the Python sidecar on localhost.
  */
 
-const BASE = 'http://127.0.0.1:8787';
+/**
+ * Where the sidecar is.
+ *
+ * 8787 is the contract — `src-tauri/src/lib.rs` spawns the sidecar there and
+ * the packaged app never overrides this. The env var exists so a second dev
+ * instance can be pointed somewhere else: `ensure_sidecar` probes `/healthz`
+ * and ADOPTS whatever answers on 8787, so any other process holding that port
+ * silently becomes the app's backend. That is a real way to end up reading
+ * somebody else's corpus while everything looks fine.
+ */
+const BASE = import.meta.env.VITE_CORPORA_API ?? 'http://127.0.0.1:8787';
 
 export interface Listing {
   rows: SourceRow[];

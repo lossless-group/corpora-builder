@@ -99,6 +99,25 @@ excerpt says the word. Filters answer exact values, not words inside them — so
 tags that were *only* filters would quietly drop that promise. They go in both
 places: filters for narrowing and counting, prose for recall.
 
+They go in **as words**, not as raw tags — "adult literacy numeracy" rather than
+`strategy:adult-literacy-numeracy` — because of the rule below.
+
+### 4. What is indexed is what gets read
+
+**Pagefind excerpts from the same text it matches on.** The index is therefore
+not only an index; it is what a reader ends up looking at, and anything put in
+for recall can surface in a result.
+
+A first version fed in the corpus key, raw and de-punctuated, so that typing part
+of a path would rank a source. It worked, and every result then displayed
+`live strategies adult literacy numeracy sources 2026 05 06 source 089.md` as
+though it were prose. Visible the moment results were rendered under the search
+box; invisible while they were only filtering a list.
+
+So the key is not indexed. It lives in `meta.path`, which is what the client
+joins on, and the loss is small: a filename in this corpus is a slug of its own
+title, and the title is indexed.
+
 Two consequences worth knowing before reading the code:
 
 - The builder widens Pagefind's word characters to include `:` `-` `_` `/` `.`,
@@ -107,13 +126,13 @@ Two consequences worth knowing before reading the code:
   filters, a search reports every count as absent — measured, not read in a doc.
   The client asks once, up front, and only on the path that needs counts.
 
-### 4. Search returns keys; rows come from the manifest
+### 5. Search returns keys; rows come from the manifest
 
 Pagefind ranks and returns corpus keys. Rows are then built the same way every
 other listing builds them. Stuffing row JSON into Pagefind metadata would put
 row-shaping in a second place, and two row-builders drift.
 
-### 5. A stale bundle is reported and bypassed
+### 6. A stale bundle is reported and bypassed
 
 The build records the fingerprint of the manifest it was built from. When that
 does not match the current manifest, the client says the ranking is stale and
@@ -122,7 +141,7 @@ because capture keeps it so. **Serving stale ranking silently is worse than
 serving unranked results honestly**, so the reason is a sentence the UI shows,
 not a log line.
 
-### 6. Ranking works on rows in hand, and only while it holds all of them
+### 7. Ranking works on rows in hand, and only while it holds all of them
 
 Ranked search reorders rows the client already has, which is what makes it
 instant rather than a round trip per keystroke — the manifest is what made
@@ -140,7 +159,7 @@ focus chip was clicked — 41 rows held, 847 in the corpus. It looked like a
 deliberate fallback and was a comparison against the wrong number, which is why
 the browser drive is part of the loop and not a formality.
 
-### 7. A result says why it matched, and costs one fetch to say it
+### 8. A result says why it matched, and costs one fetch to say it
 
 Pagefind returns matches lazily: the ranked list is cheap, and each result's
 `data()` is a **separate round trip** for that record's fragment. It carries the
@@ -157,7 +176,19 @@ The excerpt is rendered as HTML, so it is first reduced to text plus `<mark>`.
 Pagefind escapes fragment content itself — but "the library escapes it" is a
 claim that stops being true the day the library changes.
 
-### 8. No Node, no bundle, no failure
+### 9. Results appear under the search box, not only in the list
+
+Modelled on `context-vigilance-kit/splash`, whose search is a panel under the
+input rather than a filter on a list further down. The two answer different
+questions — the list is *"show me everything matching, so I can work through
+it"*, the panel is *"did the thing I am thinking of come back"* — and only the
+first existed.
+
+Eight results: title, the matching passage, the `domains:` tags. It renders from
+**rows**, not from Pagefind, so a corpus with no search index still gets a panel;
+with an index the same rows arrive ranked and marked.
+
+### 10. No Node, no bundle, no failure
 
 `check.sh` already runs two blocking Node rungs and already skips them when Node
 is absent, so the Python side stays runnable on a machine that has never built
