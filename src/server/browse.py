@@ -245,6 +245,16 @@ def _in_domain(key: str, domain: str) -> bool:
     The browser previously sent `<domain>/` as a key prefix, which matched the
     first layout and silently returned nothing for the second.
     """
+    # A trailing slash is a legal filter value, not a malformed one: the domain
+    # combobox's segment-wise Backspace walks
+    # `funders/ascendium-education` -> `funders/` -> `''`, and `funders/` is
+    # exactly the "show me the whole parent" state that walk exists to produce.
+    # Compared literally it matched nothing — `funders/` is never equal to a
+    # domain and `funders//` is never a prefix of one — so every widened filter
+    # silently returned zero rows. Found by driving the app, not by reading.
+    domain = domain.rstrip("/")
+    if not domain:
+        return True
     d = _domain_of(key)
     return d == domain or d.startswith(domain + "/")
 
@@ -276,10 +286,13 @@ def list_sources(
         for k in store.list(prefix)
         if k.endswith(".md") and k.rsplit("/", 1)[-1] not in NOT_SOURCES
     ]
+    # Counted BEFORE any narrowing, which is the whole job: a narrowed list has
+    # to be able to say what it is a subset of. Measured after the domain filter
+    # it reported 406 of 406 — technically a number, and useless.
+    corpus_total = len(all_keys)
+
     if domain:
         all_keys = [k for k in all_keys if _in_domain(k, domain)]
-
-    corpus_total = len(all_keys)
     defs = list_domain_defs(store, prefix) if focus else []
     focus_dir = ""
     if focus:

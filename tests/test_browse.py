@@ -233,3 +233,37 @@ def test_filtering_by_domain_is_independent_of_the_storage_layout(tmp_path: Path
         "2026-01-01_flat.md",
         "2026-01-02_nested.md",
     }
+
+
+@pytest.mark.spec("BROWSE-18")
+def test_a_domain_filter_ending_in_a_slash_widens_instead_of_emptying(tmp_path: Path) -> None:
+    """`funders/` is a legal filter value, not a malformed one.
+
+    The domain combobox's segment-wise Backspace walks
+    `funders/ascendium-education` -> `funders/` -> `''`, and the middle step is
+    the whole point of that walk: show me this parent. Compared literally it
+    matched nothing — `funders/` never equals a domain, and `funders//` is never
+    a prefix of one — so widening a filter silently returned zero rows.
+
+    Two features that were each correct alone, wrong at the seam. Found by
+    driving the running app, which is the only place the two ever met.
+    """
+    store = LocalFsStore(tmp_path / "corpus")
+    wrapper = '---\ntitle: "T"\nurl: "https://e.org/a"\n---\n\nBody.\n'
+    store.write("live/funders/ascendium-education/sources/2026-01-01_a.md", wrapper.encode())
+    store.write("live/funders/ballmer-group/sources/2026-01-02_b.md", wrapper.encode())
+    store.write("live/strategies/workforce-development/sources/2026-01-03_c.md", wrapper.encode())
+
+    widened = list_sources(store, domain="funders/")
+    exact = list_sources(store, domain="funders/ascendium-education")
+
+    assert widened.total == 2, "widening to the parent must show the parent's sources"
+    assert exact.total == 1
+    # And an all-slash value is the same as no filter, not a filter matching nothing.
+    assert list_sources(store, domain="/").total == 3
+
+    # `corpus_total` counts before ANY narrowing — domain included. Measured
+    # after the domain filter it reports "2 of 2", which is a number that has
+    # stopped being an answer.
+    assert widened.corpus_total == 3
+    assert exact.corpus_total == 3
