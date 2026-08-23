@@ -139,3 +139,72 @@ def test_domain_handles_both_corpus_layouts(store: LocalFsStore) -> None:
 
     assert domains["A"] == "funders/annie-e-casey"
     assert domains["B"] == "strategies/workforce"
+
+
+# ---------------------------------------------------------------------------
+# Opening the app must not read the whole corpus
+# ---------------------------------------------------------------------------
+
+
+class CountingStore(LocalFsStore):
+    """Counts body reads, so "does this open the file" is an assertion."""
+
+    def __init__(self, root) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(root)
+        self.reads = 0
+
+    def read(self, key: str) -> bytes:
+        self.reads += 1
+        return super().read(key)
+
+
+def _many(store: LocalFsStore, n: int) -> None:
+    for i in range(n):
+        body = (
+            f'---\ntitle: "Source {i}"\n' "fetched_at: 2026-08-01T00:00:00Z\n" f"---\n\nBody {i}.\n"
+        )
+        store.write(
+            f"live/topics/t{i % 3}/sources/2026-08-{(i % 28) + 1:02d}_source-{i:03d}.md",
+            body.encode(),
+        )
+
+
+@pytest.mark.spec("BROWSE-14")
+def test_meta_derives_count_and_domains_without_reading_any_file(tmp_path: Path) -> None:
+    """Reading all 845 sources to answer this took 20.6s cold against R2, which
+    is what a window stuck on 'Starting the backend…' actually was."""
+    from src.server.browse import list_domains
+
+    store = CountingStore(tmp_path / "c")
+    _many(store, 40)
+    store.reads = 0
+
+    total, domains = list_domains(store)
+
+    assert total == 40
+    assert len(domains) == 3
+    assert store.reads == 0
+
+
+@pytest.mark.spec("BROWSE-15")
+def test_an_unsearched_page_reads_only_that_page(tmp_path: Path) -> None:
+    store = CountingStore(tmp_path / "c")
+    _many(store, 40)
+    store.reads = 0
+
+    listing = list_sources(store, limit=10)
+
+    assert len(listing.rows) == 10
+    assert listing.total == 40  # the count is still honest
+    assert store.reads == 10  # ...but only ten files were opened
+
+
+@pytest.mark.spec("BROWSE-15")
+def test_a_search_still_reads_everything_because_it_has_to(tmp_path: Path) -> None:
+    store = CountingStore(tmp_path / "c")
+    _many(store, 40)
+    store.reads = 0
+
+    list_sources(store, search="Source 7", limit=10)
+
+    assert store.reads == 40

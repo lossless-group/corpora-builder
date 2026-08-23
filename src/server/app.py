@@ -22,7 +22,7 @@ from src.binary.store import BinStore
 from src.capture import JinaFetcher, add_source
 from src.feed.git_source import GitChangeSource, GitRepoError
 from src.feed.render import to_json
-from src.server.browse import list_sources, load_source
+from src.server.browse import list_domains, list_sources, load_source
 from src.store import CorpusStore, KeyNotFound
 
 STATIC = Path(__file__).parent / "static"
@@ -83,11 +83,11 @@ def create_app(
 
     @app.get("/api/meta")
     def meta() -> dict[str, object]:
-        listing = list_sources(store, limit=0)
+        total, domains = list_domains(store)
         return {
             "label": label,
-            "total": listing.total,
-            "domains": listing.domains,
+            "total": total,
+            "domains": domains,
             "writable": writable,
         }
 

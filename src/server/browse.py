@@ -12,6 +12,7 @@ reproduces that exactly — with the added insult of looking tidy while doing it
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 
 from src.binary.store import BinStore
@@ -91,6 +92,30 @@ def _binary_state(source: SourceFile, bin_store: BinStore | None) -> tuple[str, 
     return asset.binary_key, state, asset.working_bytes, asset.was_compressed
 
 
+def list_domains(store: CorpusStore, prefix: str = "") -> tuple[int, list[str]]:
+    """`(count, domains)` from keys alone — no file body is read.
+
+    What `/api/meta` needs to paint a window. Deriving it by reading all 845
+    sources took **20.6 seconds** cold against R2 and is what the operator saw as
+    a window stuck on "Starting the backend…". Both facts live in the key.
+    """
+    keys = [k for k in store.list(prefix) if k.endswith(".md")]
+    return len(keys), sorted({_domain_of(k) for k in keys})
+
+
+def _page_keys(keys: list[str], offset: int, limit: int) -> list[str]:
+    """The window of keys to actually read, newest first.
+
+    Sorted by the filename's date prefix rather than `fetched_at`, because
+    `fetched_at` is inside the file and the whole point is not to open it. The
+    naming convention writes that prefix *from* `fetched_at`, so the orders
+    agree; a file predating the convention sorts by name, which is the honest
+    fallback rather than a wrong date.
+    """
+    ordered = sorted(keys, key=lambda k: k.rsplit("/", 1)[-1], reverse=True)
+    return ordered[offset : offset + limit]
+
+
 def list_sources(
     store: CorpusStore,
     prefix: str = "",
@@ -100,15 +125,39 @@ def list_sources(
     bin_store: BinStore | None = None,
 ) -> Listing:
     """Every source under `prefix`, newest fetch first."""
-    keys = [k for k in store.list(prefix) if k.endswith(".md")]
+    all_keys = [k for k in store.list(prefix) if k.endswith(".md")]
+    domains = {_domain_of(k) for k in all_keys}
+    total = len(all_keys)
+
+    # A search has to look at everything. A page load does not, and pretending
+    # otherwise costs 845 network reads to show 50 rows.
+    paged = not search
+    keys = _page_keys(all_keys, offset, limit) if paged else all_keys
+
     rows: list[SourceRow] = []
-    domains: set[str] = set()
+
+    # Read the page concurrently. Against R2 each GET is ~140ms of latency and
+    # almost no transfer, so fifty sequential reads spend seven seconds waiting
+    # rather than working. botocore clients are thread-safe for requests, and a
+    # LocalFsStore does not care. Order is restored below.
+    blobs: dict[str, bytes | Exception] = {}
+    if keys:
+        with ThreadPoolExecutor(max_workers=min(16, len(keys))) as pool:
+            futures = {pool.submit(store.read, k): k for k in keys}
+            for fut in as_completed(futures):
+                key = futures[fut]
+                try:
+                    blobs[key] = fut.result()
+                except Exception as exc:  # noqa: BLE001 - recorded, not raised
+                    blobs[key] = exc
 
     for key in keys:
         domain = _domain_of(key)
-        domains.add(domain)
         try:
-            source = SourceFile.parse(store.read(key).decode("utf-8", errors="replace"))
+            blob = blobs[key]
+            if isinstance(blob, Exception):
+                raise blob
+            source = SourceFile.parse(blob.decode("utf-8", errors="replace"))
         except Exception as exc:  # noqa: BLE001 - a damaged file must still list
             rows.append(
                 SourceRow(
@@ -149,10 +198,13 @@ def list_sources(
             if needle in r.title.lower() or needle in r.excerpt.lower() or needle in r.path.lower()
         ]
 
+    if paged:
+        # Already ordered and windowed by key; re-slicing would drop rows.
+        return Listing(rows=rows, total=total, domains=sorted(domains))
+
     # Newest fetch first — the question a corpus browser answers most often is
     # "what did I just add". Damaged rows have no fetched_at and sort last.
     rows.sort(key=lambda r: r.fetched_at, reverse=True)
-
     return Listing(rows=rows[offset : offset + limit], total=len(rows), domains=sorted(domains))
 
 

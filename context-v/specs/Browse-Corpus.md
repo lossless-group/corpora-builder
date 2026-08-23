@@ -81,6 +81,19 @@ config change when wanted). Tauri packaging.
     exception that proves the rule in Behaviour 7, and it is stated so nobody
     later "fixes" it by gating it behind `--writable`.
 
+13. **Opening the app must not read the whole corpus.** `/api/meta` needs a
+    count and a domain list, both derivable from keys alone; it reads no file
+    bodies. And an unsearched listing pages over **keys** before reading, so
+    showing 50 rows costs 50 reads rather than 845. Measured cold against
+    reach-edu on R2, the old path took **20.6 seconds** to answer `/api/meta` —
+    which is what the operator saw as a window stuck on *Starting the backend…*
+
+    Ordering is by the filename's date prefix rather than `fetched_at` when
+    paging this way. The convention writes that date *from* `fetched_at`, so the
+    two agree; where a file predates the convention it sorts by name, which is
+    the honest fallback. A **search** still reads everything, because it has to,
+    and a search is a deliberate act rather than a page load.
+
 ## Tests
 
 | ID | Given / When / Then |
@@ -97,6 +110,8 @@ config change when wanted). Tauri packaging.
 | `BROWSE-11` | Given a corpus with history, when `/api/changes` is called, then it returns the same records `corpora changes` renders, newest first, with truncation reported |
 | `BROWSE-12` | Given a read-only server and an uncached binary, when it is fetched, then the bytes are returned, the cache is populated, and no store write or delete occurs |
 | `BROWSE-13` | Given a request for a binary key outside `bin/`, when it is fetched, then it is refused rather than served |
+| `BROWSE-14` | Given a corpus of many sources, when `/api/meta` is called, then it returns the count and domains without reading any file body |
+| `BROWSE-15` | Given more sources than the page size and no search term, when a page is listed, then only that page's files are read from the store |
 | `BROWSE-09` | Given both the `live/<type>/<slug>/sources/` layout and reach-edu's pre-existing `funders/<slug>/` and `strategies/<slug>/sources/`, when domains are derived, then each reads as an operator would name it |
 
 ## Acceptance
