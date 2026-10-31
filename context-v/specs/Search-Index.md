@@ -19,6 +19,7 @@ tags:
   - Corpora-Builder
   - Retrieval
   - Search
+type: Specs
 ---
 
 # Search Index

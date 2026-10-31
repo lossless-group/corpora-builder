@@ -23,6 +23,7 @@ tags:
   - MemoPop
 site_uuid: b59ddbd8-17b3-4b18-8a45-003505c69603
 hex_code: 8d61qg
+type: Blueprints
 ---
 
 # Source-File Schema Reconciliation

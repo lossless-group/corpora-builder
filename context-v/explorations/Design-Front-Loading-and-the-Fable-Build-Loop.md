@@ -20,6 +20,7 @@ hex_code: dpn4ri
 date_authored_initial_draft: 2026-07-20
 date_authored_current_draft: 2026-07-20
 publish: true
+type: Explorations
 ---
 
 # Design Front-Loading and the Fable Build Loop

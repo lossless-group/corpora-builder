@@ -22,6 +22,7 @@ tags:
   - MVP
 site_uuid: 63552d1e-4e95-4204-9b7c-09f86a7d7b8f
 hex_code: pklf13
+type: Plans
 ---
 
 # Corpora-Builder MVP — R2-Native With Checkpoint History

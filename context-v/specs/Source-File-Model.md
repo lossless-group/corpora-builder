@@ -21,6 +21,7 @@ hex_code: w7ug39
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
 publish: true
+type: Specs
 ---
 
 # Source-File Model

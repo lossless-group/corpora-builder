@@ -19,6 +19,7 @@ tags:
   - Corpora-Builder
   - Navigation
   - Frontend
+type: Specs
 ---
 
 # Corpus Tree

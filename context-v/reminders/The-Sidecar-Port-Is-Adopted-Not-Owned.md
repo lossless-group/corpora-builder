@@ -19,6 +19,7 @@ tags:
   - Corpora-Builder
   - Tauri
   - Agent-Discipline
+type: Reminders
 ---
 
 # The Sidecar Port Is Adopted, Not Owned

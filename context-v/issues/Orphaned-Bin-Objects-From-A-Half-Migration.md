@@ -20,6 +20,7 @@ tags:
   - Ghostscript
   - Test-Discipline
 publish: true
+type: Issues
 ---
 
 # 24 Orphaned `bin/` Objects From a Half-Migration

@@ -20,6 +20,7 @@ tags:
   - Navigation
   - Retrieval
   - Frontend
+type: Specs
 ---
 
 # Strategy Focus

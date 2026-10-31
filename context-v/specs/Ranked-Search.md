@@ -20,6 +20,7 @@ tags:
   - Retrieval
   - Search
   - Pagefind
+type: Specs
 ---
 
 # Ranked Search

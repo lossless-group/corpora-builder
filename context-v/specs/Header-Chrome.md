@@ -19,6 +19,7 @@ tags:
   - Corpora-Builder
   - Frontend
   - Theme-System
+type: Specs
 ---
 
 # Header Chrome
