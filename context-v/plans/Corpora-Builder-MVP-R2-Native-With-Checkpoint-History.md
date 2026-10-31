@@ -4,11 +4,14 @@ lede: "R2 has no object versioning, so history becomes application-level: a brow
 date_authored_initial_draft: 2026-08-08
 date_authored_current_draft: 2026-08-08
 date_last_updated: 2026-08-08
+date_created: 2026-08-08
+date_modified: 2026-08-22
 at_semantic_version: 0.0.0.1
 status: Draft
 publish: false
 category: Plan
-augmented_with: Claude Code on Claude Opus 5 (1M context)
+augmented_with:
+  - Claude Code on Claude Opus 5 (1M context)
 authors:
   - Michael Staton
 tags:
