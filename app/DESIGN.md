@@ -382,6 +382,12 @@ awareness, so it gets one baked palette — `mark-dark.svg` is the one to cut fr
 The favicon is the exception: `static/favicon.svg` carries both palettes and picks
 with `prefers-color-scheme`, which an SVG favicon can do and a `.ico` cannot.
 
+**Trademark pack.** `static/appIcon__Corpora-Builder.svg` is `mark-dark.svg`,
+unchanged, at 80% on a rounded tile of its own top-sheet fill (`#0c0d12`): the
+store/launcher icon and the one-palette source for the `.icns`. The favicon is
+`static/favicon.svg` (above). There is no wordmark or trademark lockup on
+purpose: the mark replaced the wordmark, and `corpora` is its accessible label.
+
 ### Domain combo
 
 reach-edu has **112 domain folders and 66 of them are `funders/`**, which is a
