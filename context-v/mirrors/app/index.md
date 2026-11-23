@@ -13,7 +13,7 @@ authors:
   - Michael Staton
 augmented_with:
   - Claude Code on Claude Opus 5.5
-at_semantic_version: 0.0.0.1
+at_semantic_version: 0.0.0.2
 status: Current
 category: Mirror
 type: Mirrors
@@ -29,11 +29,13 @@ summary: "Mirror of app/. The screen never touches R2; everything goes through s
 
 # app/ — desktop app
 
-> [!info] Mirror of `corpora-builder/app`, taken 2026-11-22 at commit `3a3021e`.
+> [!info] Mirror of `corpora-builder/app`, taken 2026-11-22 at commit `72a0aa7`.
 > It reports what the code is and does today. When it drifts, re-take it; don't edit it from memory.
 
-SvelteKit with the static adapter (no server-side rendering), Svelte 5 runes,
-TypeScript. The Rust side starts the Python server, waits for `/healthz`, and
+SvelteKit 3 on Vite 8 with the static adapter (no server-side rendering),
+Svelte 5 runes, TypeScript 6. SvelteKit 3 reads its configuration from the
+`sveltekit({...})` plugin in `vite.config.js`; there is no
+`svelte.config.js`. The Rust side starts the Python server, waits for `/healthz`, and
 kills it on exit. The webview calls the server directly over localhost rather
 than through Rust commands, so the server's CORS list is part of the contract.
 Dev preview runs on port 1420.
@@ -42,23 +44,15 @@ Dev preview runs on port 1420.
 
 ### App build settings
 
-`app/svelte.config.js` · 8 lines
+`app/vite.config.js` · 23 lines
 
-Builds the screen as plain files the desktop window can load without a web server.
-
-**Interface**
-
-- static adapter with `index.html` fallback; `vitePreprocess`
-
-### Dev preview settings
-
-`app/vite.config.js` · 7 lines
-
-Runs the screen in development on port 1420 and ignores changes to the launcher folder.
+Holds all the screen's build settings: ready-made files the window can load, the $lib shortcut, and the dev preview on port 1420.
 
 **Interface**
 
-- SvelteKit plugin; port `1420`, `strictPort`; ignores `src-tauri/**`
+- `sveltekit({ preprocess: vitePreprocess(), adapter: adapter({ fallback: 'index.html' }), alias: { $lib: 'src/lib' } })`
+- `$lib` is an explicit alias: SvelteKit 3 replaced it with `#lib`; kept for convergence with memopop-native
+- dev server on port `1420`, `strictPort`; ignores `src-tauri/**`
 
 ## Inside
 
@@ -77,4 +71,4 @@ Don't edit this page from memory. When the code changes, re-take it:
    their `export` lines, `Props` interfaces and `fn` definitions.
 3. Bump `date_mirrored` and the commit in the header.
 
-Taken at commit `3a3021e` on `development`.
+Taken at commit `72a0aa7` on `development`.
