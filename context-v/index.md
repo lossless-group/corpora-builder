@@ -12,3 +12,4 @@ okf_version: "0.2"
 * [Reminders](reminders/) - Short rules worth re-reading
 * [Loops](loops/) - Repeatable agent work cycles
 * [Contracts](contracts/) - Standing agreements on what an agent may do
+* [Mirrors](mirrors/) - The repo as built: every folder and file, what it is for, and the interface it offers (experimental)
