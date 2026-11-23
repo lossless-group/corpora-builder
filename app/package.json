@@ -20,7 +20,7 @@
     "pagefind": "^1.6.0",
     "svelte": "^5.59.1",
     "svelte-check": "^4.7.8",
-    "typescript": "^5.9.3",
+    "typescript": "^6",
     "vite": "^8.3.8"
   },
   "dependencies": {
