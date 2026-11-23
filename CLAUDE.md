@@ -7,8 +7,7 @@ fetching, filing, and quality-checking the source material that grounds
 everything downstream. Child of the [`ai-labs`](../CLAUDE.md) pseudomonorepo.
 
 Read `../CLAUDE.md` and `../../CLAUDE.md` too — they carry the pseudomonorepo
-discipline, the branch tier model, the Chroma RAG, and the HARD STOP relocation
-rules that apply here as well.
+discipline, branches and shipping, and the Chroma RAG, which apply here as well.
 
 ## This repo runs a loop. Read the loop before working.
 
