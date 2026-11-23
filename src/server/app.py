@@ -1,11 +1,19 @@
-"""The FastAPI surface — read-only, localhost, one page.
+"""The FastAPI surface — localhost, one page, read-only by default.
 
 Deliberately thin. Every decision about what the screen shows lives in
 `browse.py`, where it is tested without a running server.
 
-**No handler writes.** Not a policy to remember, a property to check: nothing
-here calls `store.write` or `store.delete`. That is what lets this ship against
-a real client corpus before the triage-and-rewrite questions are settled.
+**Read-only unless the server was started writable.** `writable` is decided once,
+at `create_app` (`CORPORA_WRITABLE=1` for the sidecar), never per request. Only
+two handlers write to the corpus, and both answer 403 on a read-only server:
+
+1. `POST /api/capture` — files a new source via `add_source`.
+2. `POST /api/reindex` — rewrites `index/` (the manifest and the search bundle).
+
+`GET /api/binary` also writes, but only to this machine's `bin/` cache, never to
+the corpus — so it is allowed on a read-only server (Browse-Corpus Behaviour 12).
+Nothing here calls `store.delete`. Read-only by default is what lets this ship
+against a real client corpus before the triage-and-rewrite questions are settled.
 """
 
 from __future__ import annotations

@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.index.build import build_manifest
 from src.index.manifest import fingerprint, save_manifest
 from src.index.search_index import BuildResult, build_search_index
-from src.server.browse import build_manifest
 from src.store import CorpusStore
 
 

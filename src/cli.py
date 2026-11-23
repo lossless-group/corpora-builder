@@ -263,9 +263,9 @@ def cmd_backfill_urls(args: argparse.Namespace) -> int:
     to a client, and the value of the operation is entirely in it being boring:
     a one-line insertion under `url:`, nothing else touched.
     """
+    from src.index.build import source_keys
     from src.model.backfill import apply as apply_backfill
     from src.model.backfill import plan as plan_backfill
-    from src.server.browse import source_keys
 
     store, workspace = build_store(load_env(), args.local)
 

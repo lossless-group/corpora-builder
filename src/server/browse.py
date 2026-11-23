@@ -16,15 +16,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 
 from src.binary.store import BinStore
-from src.index.manifest import (
-    INDEX_PREFIX,
-    MANIFEST_KEY,
-    Entry,
-    Manifest,
-    entry_from_failure,
-    entry_from_source,
-    load_manifest,
-)
+
+# `build_manifest` and `source_keys` live in the index layer, which is what lets
+# `src/index/rebuild.py` use them without importing the server. Re-exported here
+# because callers have always found them on this module.
+from src.index.build import NOT_SOURCES as NOT_SOURCES
+from src.index.build import build_manifest as build_manifest
+from src.index.build import entry_for, read_many, select_sources
+from src.index.build import source_keys as source_keys
+from src.index.manifest import MANIFEST_KEY, Entry, load_manifest
 from src.model import SourceFile
 from src.model.domains import any_match
 from src.store import CorpusStore
@@ -134,13 +134,6 @@ def _page_keys(keys: list[str], offset: int, limit: int) -> list[str]:
     """
     return _newest_first(keys)[offset : offset + limit]
 
-
-#: Files that describe the corpus rather than being captured material.
-#: An `index.md` is a domain's statement of the case; `AGENTS.md` and `README.md`
-#: are instructions. Listing them as sources renders them with no URL and
-#: `status: candidate`, indistinguishable from something we found and never
-#: fetched — 13 such rows in reach-edu, inflating "845 sources" by that much.
-NOT_SOURCES = ("index.md", "AGENTS.md", "README.md")
 
 DOMAIN_INDEX = "index.md"
 
@@ -307,69 +300,6 @@ def row_from_entry(entry: Entry, bin_store: BinStore | None) -> SourceRow:
     )
 
 
-def _read_many(store: CorpusStore, keys: list[str]) -> dict[str, bytes | Exception]:
-    """Read `keys` concurrently, recording failures rather than raising.
-
-    Against R2 each GET is ~140ms of latency and almost no transfer, so fifty
-    sequential reads spend seven seconds waiting rather than working. botocore
-    clients are thread-safe for requests, and a LocalFsStore does not care.
-    """
-    blobs: dict[str, bytes | Exception] = {}
-    if not keys:
-        return blobs
-    with ThreadPoolExecutor(max_workers=min(16, len(keys))) as pool:
-        futures = {pool.submit(store.read, k): k for k in keys}
-        for fut in as_completed(futures):
-            key = futures[fut]
-            try:
-                blobs[key] = fut.result()
-            except Exception as exc:  # noqa: BLE001 - recorded, not raised
-                blobs[key] = exc
-    return blobs
-
-
-def _entry_for(key: str, blob: bytes | Exception) -> Entry:
-    """One key's manifest entry, whether or not it parsed."""
-    try:
-        if isinstance(blob, Exception):
-            raise blob
-        return entry_from_source(key, SourceFile.parse(blob.decode("utf-8", errors="replace")))
-    except Exception as exc:  # noqa: BLE001 - a damaged file must still list
-        return entry_from_failure(key, f"{type(exc).__name__}: {exc}")
-
-
-def build_manifest(store: CorpusStore, prefix: str = "") -> Manifest:
-    """Read the corpus once and write down what a listing needs.
-
-    The expensive operation, run deliberately by `corpora reindex` — never as a
-    side effect of browsing, which would put an 845-read rebuild behind an
-    innocent page load.
-    """
-    keys = source_keys(store, prefix)
-    blobs = _read_many(store, keys)
-    return Manifest(entries={k: _entry_for(k, blobs.get(k, KeyError(k))) for k in keys})
-
-
-def _source_keys(keys: list[str]) -> list[str]:
-    """The captured sources among `keys`.
-
-    Excludes the corpus's own documentation (`NOT_SOURCES`) and everything under
-    `index/`, which this tool derives rather than captures.
-    """
-    return [
-        k
-        for k in keys
-        if k.endswith(".md")
-        and not k.startswith(INDEX_PREFIX)
-        and k.rsplit("/", 1)[-1] not in NOT_SOURCES
-    ]
-
-
-def source_keys(store: CorpusStore, prefix: str = "") -> list[str]:
-    """Every key under `prefix` that is a captured source."""
-    return _source_keys(store.list(prefix))
-
-
 def _is_indexed(store: CorpusStore, keys: list[str], prefix: str) -> bool:
     """Whether the corpus carries a manifest — without spending a request to ask.
 
@@ -448,7 +378,7 @@ def list_sources(
     An unindexed corpus must keep working — see `INDEX-08`.
     """
     raw_keys = store.list(prefix)
-    all_keys = _source_keys(raw_keys)
+    all_keys = select_sources(raw_keys)
     # Counted BEFORE any narrowing, which is the whole job: a narrowed list has
     # to be able to say what it is a subset of. Measured after the domain filter
     # it reported 406 of 406 — technically a number, and useless.
@@ -468,12 +398,12 @@ def list_sources(
         # few captures behind costs a few reads rather than a rebuild. The one
         # thing this cannot see is an edit in place — same key, changed content.
         uncovered = [k for k in all_keys if k not in manifest.entries]
-        blobs = _read_many(store, uncovered)
+        blobs = read_many(store, uncovered)
         rows = []
         for key in all_keys:
             entry = manifest.entries.get(key)
             if entry is None:
-                entry = _entry_for(key, blobs.get(key, KeyError(key)))
+                entry = entry_for(key, blobs.get(key, KeyError(key)))
             rows.append(row_from_entry(entry, bin_store))
         if focus:
             # Narrowed on the ROW, so a source referencing a focus whose folder
@@ -510,8 +440,8 @@ def list_sources(
     paged = not search
     keys = _page_keys(all_keys, offset, limit) if paged else all_keys
 
-    blobs = _read_many(store, keys)
-    rows = [row_from_entry(_entry_for(k, blobs.get(k, KeyError(k))), bin_store) for k in keys]
+    blobs = read_many(store, keys)
+    rows = [row_from_entry(entry_for(k, blobs.get(k, KeyError(k))), bin_store) for k in keys]
 
     if search:
         rows = _matching(rows, search)
